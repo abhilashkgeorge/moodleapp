@@ -1,8 +1,8 @@
 {
-    "app_id": "com.moodle.moodlemobile",
-    "appname": "Moodle Mobile",
-    "versioncode": 40000,
-    "versionname": "4.0.0-dev",
+    "app_id": "com.goscore.goscore",
+    "appname": "goscore",
+    "versioncode": 1,
+    "versionname": "1.0.0",
     "cache_update_frequency_usually": 420000,
     "cache_update_frequency_often": 1200000,
     "cache_update_frequency_sometimes": 3600000,
@@ -64,32 +64,20 @@
         "zh-tw": "正體中文"
     },
     "wsservice": "moodle_mobile_app",
-    "demo_sites": {
-        "student": {
-            "url": "https://school.moodledemo.net",
-            "username": "student",
-            "password": "moodle"
-        },
-        "teacher": {
-            "url": "https://school.moodledemo.net",
-            "username": "teacher",
-            "password": "moodle"
-        }
-    },
     "zoomlevels": {
         "normal": 100,
         "low": 110,
         "high": 120
     },
-    "customurlscheme": "moodlemobile",
-    "siteurl": "",
-    "sitename": "",
+    "customurlscheme": "goscore",
+    "siteurl": "https://class.goscoreweb.com",
+    "sitename": "goscore",
     "multisitesdisplay": "",
     "sitefindersettings": {},
     "onlyallowlistedsites": false,
     "skipssoconfirmation": false,
     "forcedefaultlanguage": false,
-    "privacypolicy": "https://moodle.net/moodle-app-privacy/",
+    "privacypolicy": "https://goscoreweb.com/privacy-policy/",
     "notificoncolor": "#f98012",
     "enableanalytics": false,
     "enableonboarding": true,
@@ -97,7 +85,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.moodle.moodlemobile",
+        "android": "com.goscore.goscore",
         "ios": "id633359593"
     },
     "wsrequestqueuelimit": 10,
