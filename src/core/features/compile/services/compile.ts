@@ -26,7 +26,6 @@ import {
 } from '@angular/core';
 import { JitCompilerFactory } from '@angular/platform-browser-dynamic';
 import {
-    Platform,
     ActionSheetController,
     AlertController,
     LoadingController,
@@ -48,7 +47,7 @@ import { CORE_CONTENTLINKS_SERVICES } from '@features/contentlinks/contentlinks.
 import { CORE_COURSE_SERVICES } from '@features/course/course.module';
 import { CORE_COURSES_SERVICES } from '@features/courses/courses.module';
 import { CORE_EDITOR_SERVICES } from '@features/editor/editor.module';
-import { IONIC_NATIVE_SERVICES } from '@features/emulator/emulator.module';
+import { CORE_NATIVE_SERVICES } from '@features/native/native.module';
 import { CORE_FILEUPLOADER_SERVICES } from '@features/fileuploader/fileuploader.module';
 import { CORE_FILTER_SERVICES } from '@features/filter/filter.module';
 import { CORE_GRADES_SERVICES } from '@features/grades/grades.module';
@@ -73,13 +72,17 @@ import { DomSanitizer } from '@angular/platform-browser';
 import { FormBuilder, Validators } from '@angular/forms';
 import { HttpClient } from '@angular/common/http';
 import { CoreConstants } from '@/core/constants';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { Md5 } from 'ts-md5/dist/md5';
 
 // Import core classes that can be useful for site plugins.
 import { CoreSyncBaseProvider } from '@classes/base-sync';
 import { CoreArray } from '@singletons/array';
+import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDom } from '@singletons/dom';
+import { CoreForms } from '@singletons/form';
 import { CoreText } from '@singletons/text';
+import { CoreTime } from '@singletons/time';
 import { CoreUrl } from '@singletons/url';
 import { CoreWindow } from '@singletons/window';
 import { CoreCache } from '@classes/cache';
@@ -91,6 +94,7 @@ import { CoreCourseActivityPrefetchHandlerBase } from '@features/course/classes/
 import { CoreCourseResourcePrefetchHandlerBase } from '@features/course/classes/resource-prefetch-handler';
 import { CoreGeolocationError, CoreGeolocationErrorReason } from '@services/geolocation';
 import { CORE_ERRORS_CLASSES } from '@classes/errors/errors';
+import { CoreNetwork } from '@services/network';
 
 // Import all core modules that define components, directives and pipes.
 import { CoreSharedModule } from '@/core/shared.module';
@@ -151,6 +155,8 @@ import { ADDON_PRIVATEFILES_SERVICES } from '@addons/privatefiles/privatefiles.m
 // Import some addon modules that define components, directives and pipes. Only import the important ones.
 import { AddonModAssignComponentsModule } from '@addons/mod/assign/components/components.module';
 import { AddonModWorkshopComponentsModule } from '@addons/mod/workshop/components/components.module';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Service to provide functionalities regarding compiling dynamic HTML and Javascript.
@@ -163,7 +169,7 @@ export class CoreCompileProvider {
 
     // Other Ionic/Angular providers that don't depend on where they are injected.
     protected readonly OTHER_SERVICES: unknown[] = [
-        TranslateService, HttpClient, Platform, DomSanitizer, ActionSheetController, AlertController, LoadingController,
+        TranslateService, HttpClient, DomSanitizer, ActionSheetController, AlertController, LoadingController,
         ModalController, PopoverController, ToastController, FormBuilder,
     ];
 
@@ -280,7 +286,7 @@ export class CoreCompileProvider {
             ...CORE_STYLE_SERVICES,
             ...CORE_USER_SERVICES,
             ...CORE_XAPI_SERVICES,
-            ...IONIC_NATIVE_SERVICES,
+            ...CORE_NATIVE_SERVICES,
             ...this.OTHER_SERVICES,
             ...extraProviders,
             ...ADDON_BADGES_SERVICES,
@@ -322,7 +328,7 @@ export class CoreCompileProvider {
                     // Inject the provider to the instance. We use the class name as the property name.
                     instance[providerDef.name.replace(/DelegateService$/, 'Delegate')] = this.injector.get(providerDef);
                 } catch (ex) {
-                    this.logger.warn('Error injecting provider', providerDef.name, ex);
+                    this.logger.error('Error injecting provider', providerDef.name, ex);
                 }
             }
         }
@@ -339,13 +345,22 @@ export class CoreCompileProvider {
         instance['CoreLoggerProvider'] = CoreLogger;
         instance['moment'] = moment;
         instance['Md5'] = Md5;
+        instance['Network'] = CoreNetwork.instance; // @deprecated on 4.1, plugins should use CoreNetwork instead.
+        instance['Platform'] = CorePlatform.instance; // @deprecated on 4.1, plugins should use CorePlatform instead.
         instance['CoreSyncBaseProvider'] = CoreSyncBaseProvider;
         instance['CoreArray'] = CoreArray;
+        instance['CoreComponentsRegistry'] = CoreComponentsRegistry;
+        instance['CoreNetwork'] = CoreNetwork.instance;
+        instance['CorePlatform'] = CorePlatform.instance;
+        instance['CoreDom'] = CoreDom;
+        instance['CoreForms'] = CoreForms;
         instance['CoreText'] = CoreText;
+        instance['CoreTime'] = CoreTime;
         instance['CoreUrl'] = CoreUrl;
         instance['CoreWindow'] = CoreWindow;
         instance['CoreCache'] = CoreCache;
         instance['CoreDelegate'] = CoreDelegate;
+        instance['CorePromisedValue'] = CorePromisedValue;
         instance['CoreContentLinksHandlerBase'] = CoreContentLinksHandlerBase;
         instance['CoreContentLinksModuleGradeHandler'] = CoreContentLinksModuleGradeHandler;
         instance['CoreContentLinksModuleIndexHandler'] = CoreContentLinksModuleIndexHandler;

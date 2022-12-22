@@ -16,8 +16,8 @@
         </ion-buttons>
     </ion-toolbar>
 </ion-header>
-<ion-content class="has-footer">
-    <core-loading [hideUntil]="loaded" class="safe-area-padding">
+<ion-content>
+    <core-loading [hideUntil]="loaded">
         <ion-list class="addon-messages-discussion-container" aria-live="polite">
             <ng-container *ngFor="let message of messages; index as index; last as last">
 
@@ -81,27 +81,10 @@
                     </ion-badge>
                 </div>
 
-                <ion-item *ngIf="!message.special" class="ion-text-wrap addon-message"
-                    [class.addon-message-mine]="message.userid == currentUserId"
-                    [class.addon-message-not-mine]="message.userid != currentUserId" [class.addon-message-no-user]="!message.showUserData"
-                    [@coreSlideInOut]="message.userid == currentUserId ? '' : 'fromLeft'">
-                    <ion-label>
-                        <!-- User data. -->
-                        <h2 class="addon-message-user" *ngIf="message.showUserData">
-                            <core-user-avatar slot="start" [user]="message" [linkProfile]="false">
-                            </core-user-avatar>
-                            <div>{{ message.userfullname }}</div>
-                        </h2>
-
-                        <p class="addon-message-text">
-                            <core-format-text [text]="message.message" contextLevel="module" [contextInstanceId]="cmId"
-                                [courseId]="courseId" (afterRender)="last && scrollToBottom()">
-                            </core-format-text>
-                        </p>
-                    </ion-label>
-                    <ion-note>{{ message.timestamp * 1000 | coreFormatDate: "strftimetime" }}</ion-note>
-                    <div class="tail" *ngIf="message.showTail"></div>
-                </ion-item>
+                <core-message *ngIf="!message.special" [message]="message" [user]="message" [text]="message.message"
+                    [time]="message.timestamp * 1000" (afterRender)="last && scrollToBottom()" contextLevel="module" [instanceId]="cmId"
+                    [courseId]="courseId">
+                </core-message>
             </ng-container>
         </ion-list>
 
@@ -119,7 +102,7 @@
             (onSubmit)="sendMessage($event)" [placeholder]="'addon.messages.newmessage' | translate">
         </core-send-message-form>
 
-        <ion-button *ngIf="isOnline && !polling && loaded" (click)="reconnect()" expand="block" color="light">
+        <ion-button *ngIf="isOnline && !polling && loaded" (click)="reconnect()" expand="block" fill="outline">
             {{ 'core.login.reconnect' | translate }}
         </ion-button>
     </ion-toolbar>

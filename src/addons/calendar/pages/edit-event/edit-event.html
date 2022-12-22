@@ -30,7 +30,7 @@
                 <ion-label position="stacked">
                     <p class="item-heading" [core-mark-required]="true">{{ 'core.date' | translate }}</p>
                 </ion-label>
-                <ion-datetime formControlName="timestart" [placeholder]="'core.date' | translate" [displayFormat]="dateFormat"
+                <ion-datetime formControlName="timestart" [placeholder]="'core.date' | translate" [displayFormat]="dateFormat"
                     [max]="maxDate" [min]="minDate" display-timezone="utc">
                 </ion-datetime>
                 <core-input-errors [control]="form.controls.timestart" [errorMessages]="errors"></core-input-errors>
@@ -95,7 +95,7 @@
                     </ion-label>
                 </ion-item>
                 <!-- Select the group. -->
-                <ion-item class="ion-text-wrap" *ngIf="!loadingGroups && groups.length > 0">
+                <ion-item class="ion-text-wrap core-edit-set-group" *ngIf="!loadingGroups && groups.length > 0">
                     <ion-label>
                         <p class="item-heading" [core-mark-required]="true">{{ 'core.group' | translate }}</p>
                     </ion-label>
@@ -118,7 +118,7 @@
                     <ion-label>
                         <p class="item-heading">{{ 'addon.calendar.reminders' | translate }}</p>
                     </ion-label>
-                    <ion-button fill="clear" color="dark" (click)="addReminder()" slot="end"
+                    <ion-button fill="clear" (click)="addReminder()" slot="end"
                         [attr.aria-label]="'addon.calendar.setnewreminder' | translate">
                         <ion-icon name="fas-plus" slot="icon-only" aria-hidden="true"></ion-icon>
                     </ion-button>
@@ -147,7 +147,7 @@
                         </ion-label>
                         <ion-radio slot="end" [value]="0"></ion-radio>
                     </ion-item>
-                    <ion-item lines="none">
+                    <ion-item>
                         <ion-label>
                             <p>{{ 'addon.calendar.durationuntil' | translate }}</p>
                         </ion-label>
@@ -156,10 +156,10 @@
                     <ion-item *ngIf="form.controls.duration.value === 1">
                         <ion-label position="stacked"></ion-label>
                         <ion-datetime formControlName="timedurationuntil" [max]="maxDate" [min]="minDate"
-                            [placeholder]="'addon.calendar.durationuntil' | translate" [displayFormat]="dateFormat" display-timezone="utc">
+                            [placeholder]="'addon.calendar.durationuntil' | translate" [displayFormat]="dateFormat" display-timezone="utc">
                         </ion-datetime>
                     </ion-item>
-                    <ion-item lines="none">
+                    <ion-item>
                         <ion-label>
                             <p>{{ 'addon.calendar.durationminutes' | translate }}</p>
                         </ion-label>
@@ -175,7 +175,7 @@
 
             <!-- Repeat (for new events). -->
             <ng-container *ngIf="!eventId || eventId < 0">
-                <ion-item class="ion-text-wrap divider" lines="none">
+                <ion-item class="ion-text-wrap divider">
                     <ion-label>
                         <p class="item-heading">{{ 'addon.calendar.repeatevent' | translate }}</p>
                     </ion-label>
@@ -183,7 +183,7 @@
                 </ion-item>
                 <ion-item class="ion-text-wrap">
                     <ion-label position="stacked">
-                        <p>{{ 'addon.calendar.repeatweeksl' | translate }}</p>
+                        <p class="item-heading">{{ 'addon.calendar.repeatweeksl' | translate }}</p>
                     </ion-label>
                     <ion-input type="number" name="repeats" formControlName="repeats" [disabled]="!form.controls.repeat.value">
                     </ion-input>
@@ -231,23 +231,17 @@
                 <ion-input type="text" name="location" [placeholder]="'core.location' | translate" formControlName="location">
                 </ion-input>
             </ion-item>
-
-            <ion-item>
-                <ion-label>
-                    <ion-row>
-                        <ion-col>
-                            <ion-button expand="block" (click)="submit()" [disabled]="!form.valid" type="submit">
-                                {{ 'core.save' | translate }}
-                            </ion-button>
-                        </ion-col>
-                        <ion-col *ngIf="hasOffline && eventId && eventId < 0">
-                            <ion-button expand="block" color="light" (click)="discard()">
-                                {{ 'core.discard' | translate }}
-                            </ion-button>
-                        </ion-col>
-                    </ion-row>
-                </ion-label>
-            </ion-item>
         </form>
+        <div collapsible-footer appearOnBottom *ngIf="loaded && !error" slot="fixed">
+            <div class="list-item-limited-width adaptable-buttons-row">
+                <ion-button *ngIf="hasOffline && eventId && eventId < 0" expand="block" fill="outline" (click)="discard()"
+                    class="ion-margin ion-text-wrap">
+                    {{ 'core.discard' | translate }}
+                </ion-button>
+                <ion-button expand="block" (click)="submit()" [disabled]="!form.valid" type="submit" class="ion-margin ion-text-wrap">
+                    {{ 'core.save' | translate }}
+                </ion-button>
+            </div>
+        </div>
     </core-loading>
 </ion-content>

@@ -20,7 +20,7 @@ import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreRatingInfo } from '@features/rating/services/rating';
 import { CoreTagItem } from '@features/tag/services/tag';
 import { CoreUser } from '@features/user/services/user';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFileEntry } from '@services/file-helper';
 import { CoreGroups } from '@services/groups';
 import { CoreSitesCommonWSOptions, CoreSites, CoreSitesReadingStrategy } from '@services/sites';
@@ -160,17 +160,31 @@ export class AddonModForumProvider {
     }
 
     /**
+     * Get common cache key for forum discussions list WS calls.
+     *
+     * @param forumId Forum ID.
+     * @return Cache key.
+     */
+    protected getDiscussionsListCommonCacheKey(forumId: number): string {
+        return ROOT_CACHE_KEY + 'discussions:' + forumId;
+    }
+
+    /**
      * Get cache key for forum discussions list WS calls.
      *
      * @param forumId Forum ID.
      * @param sortOrder Sort order.
+     * @param groupId Group ID.
      * @return Cache key.
      */
-    protected getDiscussionsListCacheKey(forumId: number, sortOrder: number): string {
-        let key = ROOT_CACHE_KEY + 'discussions:' + forumId;
+    protected getDiscussionsListCacheKey(forumId: number, sortOrder: number, groupId?: number): string {
+        let key = this.getDiscussionsListCommonCacheKey(forumId);
 
         if (sortOrder != AddonModForumProvider.SORTORDER_LASTPOST_DESC) {
             key += ':' + sortOrder;
+        }
+        if (groupId) {
+            key += `:group${groupId}`;
         }
 
         return key;
@@ -701,6 +715,26 @@ export class AddonModForumProvider {
     }
 
     /**
+     * Get sort order selected by the user.
+     *
+     * @return Promise resolved with sort order.
+     */
+    async getSelectedSortOrder(): Promise<AddonModForumSortOrder> {
+        const sortOrders = this.getAvailableSortOrders();
+        let sortOrderValue: number | null = null;
+
+        if (this.isDiscussionListSortingAvailable()) {
+            const preferenceValue = await CoreUtils.ignoreErrors(
+                CoreUser.getUserPreference(AddonModForumProvider.PREFERENCE_SORTORDER),
+            );
+
+            sortOrderValue = preferenceValue ? parseInt(preferenceValue, 10) : null;
+        }
+
+        return sortOrders.find(sortOrder => sortOrder.value === sortOrderValue) || sortOrders[0];
+    }
+
+    /**
      * Get forum discussions.
      *
      * @param forumId Forum ID.
@@ -729,6 +763,7 @@ export class AddonModForumProvider {
             // Since Moodle 3.7.
             method = 'mod_forum_get_forum_discussions';
             (params as AddonModForumGetForumDiscussionsWSParams).sortorder = options.sortOrder;
+            (params as AddonModForumGetForumDiscussionsWSParams).groupid = options.groupId;
         } else {
             if (options.sortOrder !== AddonModForumProvider.SORTORDER_LASTPOST_DESC) {
                 throw new Error('Sorting not supported with the old WS method.');
@@ -756,7 +791,7 @@ export class AddonModForumProvider {
         } catch (error) {
             // Try to get the data from cache stored with the old WS method.
             if (
-                CoreApp.isOnline() ||
+                CoreNetwork.isOnline() ||
                 method !== 'mod_forum_get_forum_discussions' ||
                 options.sortOrder !== AddonModForumProvider.SORTORDER_LASTPOST_DESC
             ) {
@@ -810,8 +845,6 @@ export class AddonModForumProvider {
         forumId: number,
         options: AddonModForumGetDiscussionsInPagesOptions = {},
     ): Promise<{ discussions: AddonModForumDiscussion[]; error: boolean }> {
-        options.page = options.page || 0;
-
         const result = {
             discussions: [] as AddonModForumDiscussion[],
             error: false,
@@ -824,7 +857,10 @@ export class AddonModForumProvider {
 
         const getPage = (page: number): Promise<{ discussions: AddonModForumDiscussion[]; error: boolean }> =>
             // Get page discussions.
-            this.getDiscussions(forumId, options).then((response) => {
+            this.getDiscussions(forumId, {
+                ...options,
+                page,
+            }).then((response) => {
                 result.discussions = result.discussions.concat(response.discussions);
                 numPages--;
 
@@ -841,7 +877,7 @@ export class AddonModForumProvider {
             })
         ;
 
-        return getPage(options.page);
+        return getPage(options.page ?? 0);
     }
 
     /**
@@ -881,7 +917,7 @@ export class AddonModForumProvider {
                     .getDiscussionsInPages(forum.id, {
                         cmId: forum.cmid,
                         sortOrder: sortOrder.value,
-                        readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
+                        readingStrategy: CoreSitesReadingStrategy.ONLY_CACHE,
                     })
                     .then((response) => {
                         // Now invalidate the WS calls.
@@ -945,10 +981,7 @@ export class AddonModForumProvider {
     async invalidateDiscussionsList(forumId: number, siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
 
-        await CoreUtils.allPromises(
-            this.getAvailableSortOrders()
-                .map(sortOrder => site.invalidateWsCacheForKey(this.getDiscussionsListCacheKey(forumId, sortOrder.value))),
-        );
+        await site.invalidateWsCacheForKeyStartingWith(this.getDiscussionsListCommonCacheKey(forumId));
     }
 
     /**
@@ -1065,7 +1098,7 @@ export class AddonModForumProvider {
             return false;
         };
 
-        if (!CoreApp.isOnline() && allowOffline) {
+        if (!CoreNetwork.isOnline() && allowOffline) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -1499,6 +1532,7 @@ export type AddonModForumLegacyPost = {
 export type AddonModForumGetDiscussionsOptions = CoreCourseCommonModWSOptions & {
     sortOrder?: number; // Sort order.
     page?: number; // Page. Defaults to 0.
+    groupId?: number; // Group ID.
 };
 
 /**
@@ -2079,6 +2113,7 @@ export type AddonModForumNewDiscussionData = {
     cmId: number;
     discussionIds?: number[] | null;
     discTimecreated?: number;
+    groupId?: number; // The discussion group if it's created in a certain group, ALL_PARTICIPANTS for all participants.
 };
 
 /**

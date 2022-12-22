@@ -44,6 +44,7 @@ export class AddonModH5PActivityUsersAttemptsPage implements OnInit {
     canLoadMore = false;
 
     protected page = 0;
+    protected fetchSuccess = false;
 
     /**
      * @inheritdoc
@@ -60,17 +61,7 @@ export class AddonModH5PActivityUsersAttemptsPage implements OnInit {
             return;
         }
 
-        try {
-            await this.fetchData();
-
-            if (this.h5pActivity) {
-                await AddonModH5PActivity.logViewReport(this.h5pActivity.id, this.h5pActivity.name);
-            }
-        } catch (error) {
-            CoreDomUtils.showErrorModalDefault(error, 'Error loading attempts.');
-        } finally {
-            this.loaded = true;
-        }
+        this.fetchData();
     }
 
     /**
@@ -91,11 +82,22 @@ export class AddonModH5PActivityUsersAttemptsPage implements OnInit {
      * @return Promise resolved when done.
      */
     protected async fetchData(refresh?: boolean): Promise<void> {
-        this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.cmId);
+        try {
+            this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.cmId);
 
-        await Promise.all([
-            this.fetchUsers(refresh),
-        ]);
+            await Promise.all([
+                this.fetchUsers(refresh),
+            ]);
+
+            if (!this.fetchSuccess) {
+                this.fetchSuccess = true;
+                CoreUtils.ignoreErrors(AddonModH5PActivity.logViewReport(this.h5pActivity.id, this.h5pActivity.name));
+            }
+        } catch (error) {
+            CoreDomUtils.showErrorModalDefault(error, 'Error loading attempts.');
+        } finally {
+            this.loaded = true;
+        }
     }
 
     /**
@@ -141,7 +143,7 @@ export class AddonModH5PActivityUsersAttemptsPage implements OnInit {
         h5pActivity: AddonModH5PActivityData,
         users: AddonModH5PActivityUserAttempts[],
     ): Promise<AddonModH5PActivityUserAttemptsFormatted[]> {
-        return await Promise.all(users.map(async (user: AddonModH5PActivityUserAttemptsFormatted) => {
+        return Promise.all(users.map(async (user: AddonModH5PActivityUserAttemptsFormatted) => {
             user.user = await CoreUser.getProfile(user.userid, this.courseId, true);
 
             // Calculate the score of the user.

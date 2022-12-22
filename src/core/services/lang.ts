@@ -19,10 +19,11 @@ import { LangChangeEvent } from '@ngx-translate/core';
 import { CoreAppProvider } from '@services/app';
 import { CoreConfig } from '@services/config';
 import { CoreSubscriptions } from '@singletons/subscriptions';
-import { makeSingleton, Translate, Platform, Http } from '@singletons';
+import { makeSingleton, Translate, Http } from '@singletons';
 
-import * as moment from 'moment';
+import moment from 'moment-timezone';
 import { CoreSite } from '../classes/site';
+import { CorePlatform } from '@services/platform';
 
 /*
  * Service to handle language features, like changing the current language.
@@ -57,7 +58,7 @@ export class CoreLangProvider {
      * Init language.
      */
     protected async initializeCurrentLanguage(): Promise<void> {
-        await Platform.ready();
+        await CorePlatform.ready();
 
         let language: string;
 
@@ -241,7 +242,7 @@ export class CoreLangProvider {
         // Get current language from config (user might have changed it).
         try {
             return await CoreConfig.get<string>('current_language');
-        } catch (e) {
+        } catch {
             // Try will return, ignore errors here to avoid nesting.
         }
 
@@ -292,7 +293,7 @@ export class CoreLangProvider {
      * @return Translated month names.
      */
     getMonthNames(): string[] {
-        return moment.months().map(this.capitalize.bind(this));
+        return moment.months().map(month => this.capitalize(month));
     }
 
     /**
@@ -301,7 +302,7 @@ export class CoreLangProvider {
      * @return Translated month short names.
      */
     getMonthShortNames(): string[] {
-        return moment.monthsShort().map(this.capitalize.bind(this));
+        return moment.monthsShort().map(month => this.capitalize(month));
     }
 
     /**
@@ -310,7 +311,7 @@ export class CoreLangProvider {
      * @return Translated day names.
      */
     getDayNames(): string[] {
-        return moment.weekdays().map(this.capitalize.bind(this));
+        return moment.weekdays().map(weekDay => this.capitalize(weekDay));
     }
 
     /**
@@ -319,7 +320,7 @@ export class CoreLangProvider {
      * @return Translated day short names.
      */
     getDayShortNames(): string[] {
-        return moment.weekdaysShort().map(this.capitalize.bind(this));
+        return moment.weekdaysShort().map(weekDay => this.capitalize(weekDay));
     }
 
     /**

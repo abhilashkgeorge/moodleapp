@@ -22,23 +22,35 @@ import {
     SimpleChange,
     Optional,
     ViewContainerRef,
+    ViewChild,
+    OnDestroy,
+    Inject,
+    ChangeDetectorRef,
 } from '@angular/core';
 import { IonContent } from '@ionic/angular';
 
-import { CoreEventLoadingChangedData, CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreIframeUtils, CoreIframeUtilsProvider } from '@services/utils/iframe';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreSite } from '@classes/site';
-import { Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { CoreExternalContentDirective } from './external-content';
 import { CoreLinkDirective } from './link';
 import { CoreFilter, CoreFilterFilter, CoreFilterFormatTextOptions } from '@features/filter/services/filter';
 import { CoreFilterDelegate } from '@features/filter/services/filter-delegate';
 import { CoreFilterHelper } from '@features/filter/services/filter-helper';
 import { CoreSubscriptions } from '@singletons/subscriptions';
+import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreCollapsibleItemDirective } from './collapsible-item';
+import { CoreCancellablePromise } from '@classes/cancellable-promise';
+import { AsyncComponent } from '@classes/async-component';
+import { CoreText } from '@singletons/text';
+import { CoreDom } from '@singletons/dom';
+import { CoreEvents } from '@singletons/events';
+import { CoreRefreshContext, CORE_REFRESH_CONTEXT } from '@/core/utils/refresh-context';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Directive to format text rendered. It renders the HTML and treats all links and media, using CoreLinkDirective
@@ -52,7 +64,9 @@ import { CoreSubscriptions } from '@singletons/subscriptions';
 @Directive({
     selector: 'core-format-text',
 })
-export class CoreFormatTextDirective implements OnChanges {
+export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncComponent {
+
+    @ViewChild(CoreCollapsibleItemDirective) collapsible?: CoreCollapsibleItemDirective;
 
     @Input() text?: string; // The text to format.
     @Input() siteId?: string; // Site ID to use.
@@ -72,46 +86,39 @@ export class CoreFormatTextDirective implements OnChanges {
     @Input() hideIfEmpty = false; // If true, the tag will contain nothing if text is empty.
 
     @Input() fullOnClick?: boolean | string; // @deprecated on 4.0 Won't do anything.
-    @Input() fullTitle?: string; // @deprecated on 4.0 Won't do anything..
+    @Input() fullTitle?: string; // @deprecated on 4.0 Won't do anything.
     /**
      * Max height in pixels to render the content box. It should be 50 at least to make sense.
-     * Using this parameter will force display: block to calculate height better.
-     * If you want to avoid this use class="inline" at the same time to use display: inline-block.
      */
-    @Input() maxHeight?: number;
+    @Input() maxHeight?: number; // @deprecated on 4.0 Use collapsible-item directive instead.
 
     @Output() afterRender: EventEmitter<void>; // Called when the data is rendered.
     @Output() onClick: EventEmitter<void> = new EventEmitter(); // Called when clicked.
 
     protected element: HTMLElement;
-    protected expanded = false;
-    protected loadingChangedListener?: CoreEventObserver;
     protected emptyText = '';
-    protected contentSpan: HTMLElement;
-    protected toggleExpandEnabled = false;
+    protected domPromises: CoreCancellablePromise<void>[] = [];
+    protected domElementPromise?: CoreCancellablePromise<void>;
 
     constructor(
         element: ElementRef,
         @Optional() protected content: IonContent,
         protected viewContainerRef: ViewContainerRef,
+        @Optional() @Inject(CORE_REFRESH_CONTEXT) protected refreshContext?: CoreRefreshContext,
     ) {
+        CoreComponentsRegistry.register(element.nativeElement, this);
+
         this.element = element.nativeElement;
-        this.element.classList.add('core-format-text-loading'); // Hide contents until they're treated.
-
-        const placeholder = document.createElement('span');
-        placeholder.classList.add('core-format-text-loader');
-        this.element.appendChild(placeholder);
-
-        this.contentSpan = document.createElement('span');
-        this.contentSpan.classList.add('core-format-text-content');
-        this.element.appendChild(this.contentSpan);
+        this.element.classList.add('core-loading'); // Hide contents until they're treated.
 
         this.emptyText = this.hideIfEmpty ? '' : '&nbsp;';
-        this.contentSpan.innerHTML = this.emptyText;
+        this.element.innerHTML = this.emptyText;
 
         this.afterRender = new EventEmitter<void>();
 
-        this.element.addEventListener('click', this.elementClicked.bind(this));
+        this.element.addEventListener('click', (event) => this.elementClicked(event));
+
+        this.siteId = this.siteId || CoreSites.getCurrentSiteId();
     }
 
     /**
@@ -119,19 +126,45 @@ export class CoreFormatTextDirective implements OnChanges {
      */
     ngOnChanges(changes: { [name: string]: SimpleChange }): void {
         if (changes.text || changes.filter || changes.contextLevel || changes.contextInstanceId) {
-            this.setExpandButtonEnabled(false);
-
             this.formatAndRenderContents();
         }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        this.domElementPromise?.cancel();
+        this.domPromises.forEach((promise) => { promise.cancel();});
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async ready(): Promise<void> {
+        if (!this.element.classList.contains('core-loading')) {
+            return;
+        }
+
+        await new Promise<void>(resolve => {
+            const subscription = this.afterRender.subscribe(() => {
+                subscription.unsubscribe();
+                resolve();
+            });
+        });
     }
 
     /**
      * Apply CoreExternalContentDirective to a certain element.
      *
      * @param element Element to add the attributes to.
-     * @return External content instance.
+     * @return External content instance or undefined if siteId is not provided.
      */
-    protected addExternalContent(element: Element): CoreExternalContentDirective {
+    protected addExternalContent(element: Element): CoreExternalContentDirective | undefined {
+        if (!this.siteId) {
+            return;
+        }
+
         // Angular doesn't let adding directives dynamically. Create the CoreExternalContentDirective manually.
         const extContent = new CoreExternalContentDirective(new ElementRef(element));
 
@@ -144,6 +177,9 @@ export class CoreFormatTextDirective implements OnChanges {
         extContent.poster = element.getAttribute('poster') || undefined;
 
         extContent.ngAfterViewInit();
+
+        const changeDetectorRef = this.viewContainerRef.injector.get(ChangeDetectorRef);
+        changeDetectorRef.markForCheck();
 
         return extContent;
     }
@@ -196,14 +232,14 @@ export class CoreFormatTextDirective implements OnChanges {
     /**
      * Add magnifying glass icons to view adapted images at full size.
      */
-    addMagnifyingGlasses(): void {
-        const imgs = Array.from(this.contentSpan.querySelectorAll('.core-adapted-img-container > img'));
+    async addMagnifyingGlasses(): Promise<void> {
+        const imgs = Array.from(this.element.querySelectorAll('.core-adapted-img-container > img'));
         if (!imgs.length) {
             return;
         }
 
         // If cannot calculate element's width, use viewport width to avoid false adapt image icons appearing.
-        const elWidth = this.getElementWidth(this.element) || window.innerWidth;
+        const elWidth = await this.getElementWidth();
 
         imgs.forEach((img: HTMLImageElement) => {
             // Skip image if it's inside a link.
@@ -229,7 +265,8 @@ export class CoreFormatTextDirective implements OnChanges {
             button.classList.add('hidden');
             button.setAttribute('aria-label', label);
             // Add an ion-icon item to apply the right styles, but the ion-icon component won't be executed.
-            button.innerHTML = '<ion-icon name="fas-search" aria-hidden="true" src="assets/fonts/font-awesome/solid/search.svg">\
+            button.innerHTML = '<ion-icon name="fas-expand-alt" aria-hidden="true" \
+                src="assets/fonts/font-awesome/solid/expand-alt.svg">\
             </ion-icon>';
 
             button.addEventListener('click', (e: Event) => {
@@ -248,82 +285,6 @@ export class CoreFormatTextDirective implements OnChanges {
                 img.onload = () => button.classList.remove('hidden');
             }
         });
-    }
-
-    /**
-     * Calculate the height and check if we need to display show more or not.
-     */
-    protected calculateHeight(): void {
-        // @todo: Work on calculate this height better.
-        if (!this.maxHeight) {
-            return;
-        }
-
-        // Remove max-height (if any) to calculate the real height.
-        const initialMaxHeight = this.element.style.maxHeight;
-        this.element.style.maxHeight = '';
-
-        const height = this.getElementHeight(this.element);
-
-        // Restore the max height now.
-        this.element.style.maxHeight = initialMaxHeight;
-
-        // If cannot calculate height, shorten always.
-        this.setExpandButtonEnabled(!height || height > this.maxHeight);
-    }
-
-    /**
-     * Sets if expand button is enabled or not.
-     *
-     * @param enable Wether enable or disable.
-     */
-    protected setExpandButtonEnabled(enable: boolean): void {
-        this.toggleExpandEnabled = enable;
-        this.element.classList.toggle('core-text-formatted', enable);
-
-        if (!enable || this.element.querySelector('ion-button.core-format-text-toggle'))  {
-            return;
-        }
-
-        // Add expand/collapse buttons
-        const toggleButton = document.createElement('ion-button');
-        toggleButton.classList.add('core-format-text-toggle');
-        toggleButton.setAttribute('fill', 'clear');
-
-        const toggleText = document.createElement('span');
-        toggleText.classList.add('core-format-text-toggle-text');
-        toggleButton.appendChild(toggleText);
-
-        const expandArrow = document.createElement('span');
-        expandArrow.classList.add('core-format-text-arrow');
-        toggleButton.appendChild(expandArrow);
-
-        this.element.appendChild(toggleButton);
-
-        this.toggleExpand(this.expanded);
-    }
-
-    /**
-     * Expand or collapse text.
-     *
-     * @param expand Wether expand or collapse text. If undefined, will toggle.
-     */
-    protected toggleExpand(expand?: boolean): void {
-        if (expand === undefined) {
-            expand = !this.expanded;
-        }
-        this.expanded = expand;
-        this.element.classList.toggle('core-text-format-expanded', expand);
-        this.element.classList.toggle('core-text-format-collapsed', !expand);
-        this.element.style.maxHeight = expand ? '' : this.maxHeight + 'px';
-
-        const toggleButton = this.element.querySelector('ion-button.core-format-text-toggle');
-        const toggleText = toggleButton?.querySelector('.core-format-text-toggle-text');
-        if (!toggleButton || !toggleText) {
-            return;
-        }
-        toggleText.innerHTML = expand ? Translate.instant('core.showless') : Translate.instant('core.showmore');
-        toggleButton.setAttribute('aria-expanded', expand ? 'true' : 'false');
     }
 
     /**
@@ -347,23 +308,17 @@ export class CoreFormatTextDirective implements OnChanges {
             return;
         }
 
-        if (!this.toggleExpandEnabled) {
-            // Nothing to do on click, just stop.
-            return;
-        }
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        this.toggleExpand();
+        this.collapsible?.elementClicked(e);
     }
 
     /**
      * Finish the rendering, displaying the element again and calling afterRender.
      */
-    protected finishRender(): void {
+    protected async finishRender(): Promise<void> {
         // Show the element again.
-        this.element.classList.remove('core-format-text-loading');
+        this.element.classList.remove('core-loading');
+
+        await CoreUtils.nextTick();
 
         // Emit the afterRender output.
         this.afterRender.emit();
@@ -374,16 +329,13 @@ export class CoreFormatTextDirective implements OnChanges {
      */
     protected async formatAndRenderContents(): Promise<void> {
         if (!this.text) {
-            this.contentSpan.innerHTML = this.emptyText; // Remove current contents.
-            this.finishRender();
+            this.element.innerHTML = this.emptyText; // Remove current contents.
+
+            await this.finishRender();
 
             return;
         }
 
-        // In AOT the inputs and ng-reflect aren't in the DOM sometimes. Add them so styles are applied.
-        if (this.maxHeight && !this.element.getAttribute('maxHeight')) {
-            this.element.setAttribute('maxHeight', String(this.maxHeight));
-        }
         if (!this.element.getAttribute('singleLine')) {
             this.element.setAttribute('singleLine', String(CoreUtils.isTrueOrOne(this.singleLine)));
         }
@@ -395,42 +347,27 @@ export class CoreFormatTextDirective implements OnChanges {
         // Disable media adapt to correctly calculate the height.
         this.element.classList.add('core-disable-media-adapt');
 
-        this.contentSpan.innerHTML = ''; // Remove current contents.
-        if (this.maxHeight && result.div.innerHTML != '' &&
-                (window.innerWidth < 576 || window.innerHeight < 576)) { // Don't collapse in big screens.
+        this.element.innerHTML = ''; // Remove current contents.
 
-            // Move the children to the current element to be able to calculate the height.
-            CoreDomUtils.moveChildren(result.div, this.contentSpan);
+        // Move the children to the current element to be able to calculate the height.
+        CoreDomUtils.moveChildren(result.div, this.element);
 
-            // Calculate the height now.
-            this.calculateHeight();
-            setTimeout(() => this.calculateHeight(), 200); // Try again, sometimes the first calculation is wrong.
+        await CoreUtils.nextTick();
 
-            // Add magnifying glasses to images.
-            this.addMagnifyingGlasses();
-
-            if (!this.loadingChangedListener) {
-                // Recalculate the height if a parent core-loading displays the content.
-                this.loadingChangedListener =
-                    CoreEvents.on(CoreEvents.CORE_LOADING_CHANGED, (data: CoreEventLoadingChangedData) => {
-                        if (data.loaded && CoreDomUtils.closest(this.element.parentElement, '#' + data.uniqueId)) {
-                            // The format-text is inside the loading, re-calculate the height.
-                            this.calculateHeight();
-                            setTimeout(() => this.calculateHeight(), 200);
-                        }
-                    });
-            }
-        } else {
-            CoreDomUtils.moveChildren(result.div, this.contentSpan);
-
-            // Add magnifying glasses to images.
-            this.addMagnifyingGlasses();
+        // Use collapsible-item directive instead.
+        if (this.maxHeight && !this.collapsible) {
+            this.collapsible = new CoreCollapsibleItemDirective(new ElementRef(this.element));
+            this.collapsible.height = this.maxHeight;
+            this.collapsible.ngOnInit();
         }
+
+        // Add magnifying glasses to images.
+        this.addMagnifyingGlasses();
 
         if (result.options.filter) {
             // Let filters handle HTML. We do it here because we don't want them to block the render of the text.
             CoreFilterDelegate.handleHtml(
-                this.contentSpan,
+                this.element,
                 result.filters,
                 this.viewContainerRef,
                 result.options,
@@ -442,7 +379,7 @@ export class CoreFormatTextDirective implements OnChanges {
         }
 
         this.element.classList.remove('core-disable-media-adapt');
-        this.finishRender();
+        await this.finishRender();
     }
 
     /**
@@ -525,9 +462,16 @@ export class CoreFormatTextDirective implements OnChanges {
         const svgImages = Array.from(div.querySelectorAll('image'));
         const promises: Promise<void>[] = [];
 
+        this.treatAppUrlElements(div, site);
+
         // Walk through the content to find the links and add our directive to it.
         // Important: We need to look for links first because in 'img' we add new links without core-link.
         anchors.forEach((anchor) => {
+            if (anchor.dataset.appUrl) {
+                // Link already treated in treatAppUrlElements, ignore it.
+                return;
+            }
+
             // Angular 2 doesn't let adding directives dynamically. Create the CoreLinkDirective manually.
             const linkDir = new CoreLinkDirective(new ElementRef(anchor), this.content);
             linkDir.capture = this.captureLinks ?? true;
@@ -544,7 +488,7 @@ export class CoreFormatTextDirective implements OnChanges {
                 this.addMediaAdaptClass(img);
 
                 const externalImage = this.addExternalContent(img);
-                if (!externalImage.invalid) {
+                if (externalImage && !externalImage.invalid) {
                     externalImages.push(externalImage);
                 }
 
@@ -620,43 +564,113 @@ export class CoreFormatTextDirective implements OnChanges {
     }
 
     /**
-     * Returns the element width in pixels.
+     * Treat elements with an app-url data attribute.
      *
-     * @param element Element to get width from.
-     * @return The width of the element in pixels. When 0 is returned it means the element is not visible.
+     * @param div Div containing the elements.
+     * @param site Site.
      */
-    protected getElementWidth(element: HTMLElement): number {
-        let width = CoreDomUtils.getElementWidth(element);
+    protected treatAppUrlElements(div: HTMLElement, site?: CoreSite): void {
+        const appUrlElements = Array.from(div.querySelectorAll<HTMLElement>('*[data-app-url]'));
 
-        if (!width) {
-            // All elements inside are floating or inline. Change display mode to allow calculate the width.
-            const parentWidth = element.parentElement ?
-                CoreDomUtils.getElementWidth(element.parentElement, true, false, false, true) : 0;
-            const previousDisplay = getComputedStyle(element, null).display;
-
-            element.style.display = 'inline-block';
-
-            width = CoreDomUtils.getElementWidth(element);
-
-            // If width is incorrectly calculated use parent width instead.
-            if (parentWidth > 0 && (!width || width > parentWidth)) {
-                width = parentWidth;
+        appUrlElements.forEach((element) => {
+            const url = element.dataset.appUrl;
+            if (!url) {
+                return;
             }
 
-            element.style.display = previousDisplay;
-        }
+            if (element.tagName !== 'BUTTON' && element.tagName !== 'A') {
+                element.setAttribute('tabindex', '0');
+                element.setAttribute('role', 'button');
+            }
 
-        return width;
+            CoreDom.onActivate(element, async (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+
+                site = site || CoreSites.getCurrentSite();
+                if (!site) {
+                    return;
+                }
+
+                const confirmMessage = element.dataset.appUrlConfirm;
+                const openInApp = element.dataset.openIn === 'app';
+                const refreshOnResume = element.dataset.appUrlResumeAction === 'refresh';
+
+                if (confirmMessage) {
+                    try {
+                        await CoreDomUtils.showConfirm(Translate.instant(confirmMessage));
+                    } catch {
+                        return;
+                    }
+                }
+
+                if (openInApp) {
+                    site.openInAppWithAutoLogin(url);
+
+                    if (refreshOnResume && this.refreshContext) {
+                        // Refresh the context when the IAB is closed.
+                        CoreEvents.once(CoreEvents.IAB_EXIT, () => {
+                            this.refreshContext?.refreshContext();
+                        });
+                    }
+                } else {
+                    site.openInBrowserWithAutoLogin(url, undefined, {
+                        showBrowserWarning: !confirmMessage,
+                    });
+
+                    if (refreshOnResume && this.refreshContext) {
+                        // Refresh the context when the app is resumed.
+                        CoreSubscriptions.once(CorePlatform.resume, () => {
+                            NgZone.run(async () => {
+                                this.refreshContext?.refreshContext();
+                            });
+                        });
+                    }
+                }
+            });
+        });
     }
 
     /**
-     * Returns the element height in pixels.
+     * Returns the element width in pixels.
      *
-     * @param elementAng Element to get height from.
-     * @return The height of the element in pixels. When 0 is returned it means the element is not visible.
+     * @return The width of the element in pixels.
      */
-    protected getElementHeight(element: HTMLElement): number {
-        return CoreDomUtils.getElementHeight(element) || 0;
+    protected async getElementWidth(): Promise<number> {
+        if (!this.domElementPromise) {
+            this.domElementPromise = CoreDom.waitToBeInDOM(this.element);
+        }
+        await this.domElementPromise;
+
+        let width = this.element.getBoundingClientRect().width;
+        if (!width) {
+            // All elements inside are floating or inline. Change display mode to allow calculate the width.
+            const previousDisplay = getComputedStyle(this.element).display;
+
+            this.element.style.display = 'inline-block';
+            await CoreUtils.nextTick();
+
+            width = this.element.getBoundingClientRect().width;
+
+            this.element.style.display = previousDisplay;
+        }
+
+        // Aproximate using parent elements.
+        let element = this.element;
+        while (!width && element.parentElement) {
+            element = element.parentElement;
+            const computedStyle = getComputedStyle(element);
+
+            const padding = CoreDomUtils.getComputedStyleMeasure(computedStyle, 'paddingLeft') +
+                    CoreDomUtils.getComputedStyleMeasure(computedStyle, 'paddingRight');
+
+            // Use parent width as an aproximation.
+            width = element.getBoundingClientRect().width - padding;
+        }
+
+        return width > 0 && width < window.innerWidth
+            ? width
+            : window.innerWidth;
     }
 
     /**
@@ -760,10 +774,26 @@ export class CoreFormatTextDirective implements OnChanges {
 
         if (site && src) {
             // Check if it's a Vimeo video. If it is, use the wsplayer script instead to make restricted videos work.
-            const matches = iframe.src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)/);
+            const matches = src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)([?&]+h=([a-zA-Z0-9]*))?/);
             if (matches && matches[1]) {
-                let newUrl = CoreTextUtils.concatenatePaths(site.getURL(), '/media/player/vimeo/wsplayer.php?video=') +
+                let newUrl = CoreText.concatenatePaths(site.getURL(), '/media/player/vimeo/wsplayer.php?video=') +
                     matches[1] + '&token=' + site.getToken();
+
+                let privacyHash: string | undefined | null = matches[3];
+                if (!privacyHash) {
+                    // No privacy hash using the new format. Check the legacy format.
+                    const matches = src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)(\/([a-zA-Z0-9]+))?/);
+                    privacyHash = matches && matches[3];
+                }
+
+                if (privacyHash) {
+                    newUrl += `&h=${privacyHash}`;
+                }
+
+                const domPromise = CoreDom.waitToBeInDOM(iframe);
+                this.domPromises.push(domPromise);
+
+                await domPromise;
 
                 // Width and height are mandatory, we need to calculate them.
                 let width: string | number;
@@ -772,7 +802,7 @@ export class CoreFormatTextDirective implements OnChanges {
                 if (iframe.width) {
                     width = iframe.width;
                 } else {
-                    width = this.getElementWidth(iframe);
+                    width = iframe.getBoundingClientRect().width;
                     if (!width) {
                         width = window.innerWidth;
                     }
@@ -781,7 +811,7 @@ export class CoreFormatTextDirective implements OnChanges {
                 if (iframe.height) {
                     height = iframe.height;
                 } else {
-                    height = this.getElementHeight(iframe);
+                    height = iframe.getBoundingClientRect().height;
                     if (!height) {
                         height = width;
                     }
@@ -792,7 +822,7 @@ export class CoreFormatTextDirective implements OnChanges {
                     newUrl += '&width=' + width + '&height=' + height;
                 }
 
-                await CoreIframeUtils.fixIframeCookies(src);
+                await CoreIframeUtils.fixIframeCookies(newUrl);
 
                 iframe.src = newUrl;
 

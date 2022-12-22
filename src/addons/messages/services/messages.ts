@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { CoreLogger } from '@singletons/logger';
 import { CoreSites } from '@services/sites';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreUser, CoreUserBasicData } from '@features/user/services/user';
 import {
     AddonMessagesOffline,
@@ -32,6 +32,7 @@ import { makeSingleton } from '@singletons';
 import { CoreError } from '@classes/errors/error';
 import { AddonMessagesSyncEvents, AddonMessagesSyncProvider } from './messages-sync';
 import { CoreWSError } from '@classes/errors/wserror';
+import { AddonNotificationsPreferencesNotificationProcessorState } from '@addons/notifications/services/notifications';
 
 const ROOT_CACHE_KEY = 'mmaMessages:';
 
@@ -1619,13 +1620,12 @@ export class AddonMessagesProvider {
             preSets.emergencyCache = false;
         }
 
-        return await this.getMessages(params, preSets, siteId);
+        return this.getMessages(params, preSets, siteId);
     }
 
     /**
      * Invalidate all contacts cache.
      *
-     * @param userId The user ID.
      * @param siteId Site ID. If not defined, current site.
      * @return Resolved when done.
      */
@@ -2423,7 +2423,7 @@ export class AddonMessagesProvider {
 
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the message.
             return storeOffline();
         }
@@ -2516,7 +2516,7 @@ export class AddonMessagesProvider {
             messages,
         };
 
-        return await site.write('core_message_send_instant_messages', data);
+        return site.write('core_message_send_instant_messages', data);
     }
 
     /**
@@ -2554,7 +2554,7 @@ export class AddonMessagesProvider {
             };
         };
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the message.
             return storeOffline();
         }
@@ -2650,7 +2650,7 @@ export class AddonMessagesProvider {
             })),
         };
 
-        return await site.write('core_message_send_messages_to_conversation', params);
+        return site.write('core_message_send_messages_to_conversation', params);
     }
 
     /**
@@ -3047,16 +3047,9 @@ export type AddonMessagesMessagePreferencesNotificationProcessor = {
     locked: boolean; // Is locked by admin?.
     lockedmessage?: string; // @since 3.6. Text to display if locked.
     userconfigured: number; // Is configured?.
-    loggedin: {
-        name: string; // Name.
-        displayname: string; // Display name.
-        checked: boolean; // Is checked?.
-    };
-    loggedoff: {
-        name: string; // Name.
-        displayname: string; // Display name.
-        checked: boolean; // Is checked?.
-    };
+    enabled?: boolean; // @since 4.0. Processor enabled.
+    loggedin: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
+    loggedoff: AddonNotificationsPreferencesNotificationProcessorState; // @deprecated removed on 4.0.
 };
 
 /**

@@ -17,7 +17,7 @@ import { Injectable } from '@angular/core';
 import { CoreSyncBaseProvider } from '@classes/base-sync';
 
 import { CoreSites } from '@services/sites';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreCourseOffline } from './course-offline';
@@ -51,7 +51,7 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllCourses(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('courses', this.syncAllCoursesFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('courses', (siteId) => this.syncAllCoursesFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -167,7 +167,7 @@ export class CoreCourseSyncProvider extends CoreSyncBaseProvider<CoreCourseSyncR
             return result;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }

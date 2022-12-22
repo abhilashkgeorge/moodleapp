@@ -43,7 +43,7 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
     @Input() data?: Record<string, unknown>; // Data to pass to the component.
     @Input() preSets?: CoreSiteWSPreSets; // The preSets for the WS call.
     @Input() pageTitle?: string; // Current page title. It can be used by the "new-content" directives.
-    @Output() onContentLoaded = new EventEmitter<boolean>(); // Emits an event when the content is loaded.
+    @Output() onContentLoaded = new EventEmitter<CoreSitePluginsPluginContentLoadedData>(); // Emits event when content is loaded.
     @Output() onLoadingContent = new EventEmitter<boolean>(); // Emits an event when starts to load the content.
 
     content?: string; // Content.
@@ -108,17 +108,19 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
             this.jsData = Object.assign(this.data, CoreSitePlugins.createDataForJS(this.initResult, result));
 
             // Pass some methods as jsData so they can be called from the template too.
-            this.jsData.fetchContent = this.fetchContent.bind(this);
-            this.jsData.openContent = this.openContent.bind(this);
-            this.jsData.refreshContent = this.refreshContent.bind(this);
-            this.jsData.updateContent = this.updateContent.bind(this);
-            this.jsData.updateModuleCourseContent = this.updateModuleCourseContent.bind(this);
+            this.jsData.fetchContent = refresh => this.fetchContent(refresh);
+            this.jsData.openContent = (title, args, component, method, jsData, preSets, ptrEnabled) =>
+                this.openContent(title, args, component, method, jsData, preSets, ptrEnabled);
+            this.jsData.refreshContent = showSpinner => this.refreshContent(showSpinner);
+            this.jsData.updateContent = (args, component, method, jsData, preSets) =>
+                this.updateContent(args, component, method, jsData, preSets);
+            this.jsData.updateModuleCourseContent = (cmId, alreadyFetched) => this.updateModuleCourseContent(cmId, alreadyFetched);
 
-            this.onContentLoaded.emit(refresh);
+            this.onContentLoaded.emit({ refresh: !!refresh, success: true });
         } catch (error) {
             // Make it think it's loaded - otherwise it sticks on 'loading' and stops navigation working.
             this.content = '<div></div>';
-            this.onContentLoaded.emit(refresh);
+            this.onContentLoaded.emit({ refresh: !!refresh, success: false });
 
             CoreDomUtils.showErrorModalDefault(error, 'core.errorloadingcontent', true);
         } finally {
@@ -237,3 +239,8 @@ export class CoreSitePluginsPluginContentComponent implements OnInit, DoCheck {
     }
 
 }
+
+export type CoreSitePluginsPluginContentLoadedData = {
+    refresh: boolean;
+    success: boolean;
+};

@@ -16,10 +16,11 @@
     </ion-toolbar>
 </ion-header>
 <ion-content>
-    <ion-refresher slot="fixed" [disabled]="!activityComponent?.loaded" (ionRefresh)="activityComponent?.doRefresh($event.target)">
+    <ion-refresher slot="fixed" [disabled]="activityComponent?.showLoading" (ionRefresh)="activityComponent?.doRefresh($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>
 
-    <addon-mod-h5pactivity-index [module]="module" [courseId]="courseId" (dataRetrieved)="updateData($event)">
+    <addon-mod-h5pactivity-index [module]="module" [courseId]="courseId" (dataRetrieved)="updateData($event)"
+        (onActivityFinish)="setCanleaveSafely($event)">
     </addon-mod-h5pactivity-index>
 </ion-content>

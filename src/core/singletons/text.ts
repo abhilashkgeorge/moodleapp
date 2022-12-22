@@ -23,6 +23,20 @@ export class CoreText {
     }
 
     /**
+     * Add starting slash to a string if needed.
+     *
+     * @param text Text to treat.
+     * @return Treated text.
+     */
+    static addStartingSlash(text = ''): string {
+        if (text[0] === '/') {
+            return text;
+        }
+
+        return '/' + text;
+    }
+
+    /**
      * Remove ending slash from a path or URL.
      *
      * @param text Text to treat.
@@ -38,6 +52,46 @@ export class CoreText {
         }
 
         return text;
+    }
+
+    /**
+     * Remove starting slash from a string if needed.
+     *
+     * @param text Text to treat.
+     * @return Treated text.
+     */
+    static removeStartingSlash(text = ''): string {
+        if (text[0] !== '/') {
+            return text;
+        }
+
+        return text.substring(1);
+    }
+
+    /**
+     * Concatenate two paths, adding a slash between them if needed.
+     *
+     * @param leftPath Left path.
+     * @param rightPath Right path.
+     * @return Concatenated path.
+     */
+    static concatenatePaths(leftPath: string, rightPath: string): string {
+        if (!leftPath) {
+            return rightPath;
+        } else if (!rightPath) {
+            return leftPath;
+        }
+
+        const lastCharLeft = leftPath.slice(-1);
+        const firstCharRight = rightPath.charAt(0);
+
+        if (lastCharLeft === '/' && firstCharRight === '/') {
+            return leftPath + rightPath.substring(1);
+        } else if (lastCharLeft !== '/' && firstCharRight !== '/') {
+            return leftPath + '/' + rightPath;
+        } else {
+            return leftPath + rightPath;
+        }
     }
 
 }

@@ -27,7 +27,11 @@
     <preference name="UIWebViewBounce" value="false" />
     <preference name="DisallowOverscroll" value="true" />
     <preference name="prerendered-icon" value="true" />
+<<<<<<< HEAD
     <preference name="AppendUserAgent" value="goscore 1.0 (1)" />
+=======
+    <preference name="AppendUserAgent" value="MoodleMobile 4.1.0-dev (41000)" />
+>>>>>>> 8b36a6864d4bc9996aac7de9905aba78cda331bb
     <preference name="BackupWebStorage" value="none" />
     <preference name="ScrollEnabled" value="false" />
     <preference name="KeyboardDisplayRequiresUserAction" value="false" />
@@ -40,7 +44,7 @@
     <preference name="SplashMaintainAspectRatio" value="true" />
     <preference name="SplashShowOnlyFirstTime" value="false" />
     <preference name="android-minSdkVersion" value="22" />
-    <preference name="android-targetSdkVersion" value="30" />
+    <preference name="android-targetSdkVersion" value="31" />
     <preference name="AndroidPersistentFileLocation" value="Compatibility" />
     <preference name="AndroidInsecureFileModeEnabled" value="true" />
     <preference name="CustomURLSchemePluginClearsAndroidIntent" value="true" />
@@ -51,6 +55,7 @@
     <preference name="AndroidXEnabled" value="true" />
     <preference name="GradlePluginGoogleServicesEnabled" value="true" />
     <preference name="GradlePluginGoogleServicesVersion" value="4.3.10" />
+    <preference name="StatusBarOverlaysWebView" value="false" />
     <feature name="StatusBar">
         <param name="ios-package" onload="true" value="CDVStatusBar" />
     </feature>
@@ -59,7 +64,7 @@
         <resource-file src="google-services.json" target="app/google-services.json" />
         <resource-file src="resources/android/xml/network_security_config.xml" target="app/src/main/res/xml/network_security_config.xml" />
         <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application/activity[@android:name='MainActivity']">
-            <activity android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|screenLayout|smallestScreenSize" />
+            <activity android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|screenLayout|smallestScreenSize" android:exported="true" />
         </edit-config>
         <edit-config file="AndroidManifest.xml" mode="merge" target="/manifest/application">
             <application android:largeHeap="true" android:networkSecurityConfig="@xml/network_security_config" />
@@ -123,11 +128,6 @@
         <config-file parent="/*" target="res/xml/config.xml">
             <feature name="Geolocation">
                 <param name="android-package" value="org.apache.cordova.geolocation.Geolocation" />
-            </feature>
-        </config-file>
-        <config-file parent="/*" target="res/xml/config.xml">
-            <feature name="Globalization">
-                <param name="android-package" value="org.apache.cordova.globalization.Globalization" />
             </feature>
         </config-file>
         <config-file parent="/*" target="res/xml/config.xml">
@@ -196,21 +196,6 @@
                 <param name="android-package" value="com.adobe.phonegap.push.PushPlugin" />
             </feature>
         </config-file>
-        <config-file parent="/manifest/application" target="AndroidManifest.xml">
-            <activity android:exported="true" android:name="com.adobe.phonegap.push.PushHandlerActivity" android:permission="${applicationId}.permission.PushHandlerActivity" />
-            <receiver android:name="com.adobe.phonegap.push.BackgroundActionButtonHandler" />
-            <receiver android:name="com.adobe.phonegap.push.PushDismissedHandler" />
-            <service android:name="com.adobe.phonegap.push.FCMService">
-                <intent-filter>
-                    <action android:name="com.google.firebase.MESSAGING_EVENT" />
-                </intent-filter>
-            </service>
-            <service android:name="com.adobe.phonegap.push.PushInstanceIDListenerService">
-                <intent-filter>
-                    <action android:name="com.google.firebase.INSTANCE_ID_EVENT" />
-                </intent-filter>
-            </service>
-        </config-file>
         <config-file parent="/*" target="res/xml/config.xml">
             <feature name="Media">
                 <param name="android-package" value="org.apache.cordova.media.AudioHandler" />
@@ -275,7 +260,7 @@
             <true />
         </edit-config>
         <edit-config file="*-Info.plist" mode="merge" target="CFBundleShortVersionString">
-            <string>4.0.0</string>
+            <string>4.1.0</string>
         </edit-config>
         <edit-config file="*-Info.plist" mode="overwrite" target="CFBundleLocalizations">
             <array>

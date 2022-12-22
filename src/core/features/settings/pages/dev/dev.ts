@@ -14,9 +14,11 @@
 
 import { Component, OnInit } from '@angular/core';
 import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
+import { CoreUserTours } from '@features/usertours/services/user-tours';
+import { CorePlatform } from '@services/platform';
 import { CoreSites } from '@services/sites';
+import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
-import { Platform } from '@singletons';
 
 /**
  * Page that displays the developer options.
@@ -36,13 +38,14 @@ export class CoreSettingsDevPage implements OnInit {
     pluginStyles = true;
     pluginStylesCount = 0;
     sitePlugins: CoreSitePluginsBasicInfo[] = [];
+    userToursEnabled = true;
 
     disabledFeatures: string[] = [];
 
     siteId: string | undefined;
 
     async ngOnInit(): Promise<void> {
-        this.rtl = Platform.isRTL;
+        this.rtl = CorePlatform.isRTL;
         this.RTLChanged();
 
         this.forceSafeAreaMargins = document.documentElement.classList.contains('force-safe-area-margins');
@@ -59,6 +62,8 @@ export class CoreSettingsDevPage implements OnInit {
 
         this.pluginStyles = false;
         this.pluginStylesCount = 0;
+
+        this.userToursEnabled = !CoreUserTours.isDisabled();
 
         document.head.querySelectorAll('style').forEach((style) => {
             if (this.siteId && style.id.endsWith(this.siteId)) {
@@ -137,6 +142,14 @@ export class CoreSettingsDevPage implements OnInit {
      */
     copyInfo(): void {
         CoreUtils.copyToClipboard(JSON.stringify({ disabledFeatures: this.disabledFeatures, sitePlugins: this.sitePlugins }));
+    }
+
+    /**
+     * Reset all user tours.
+     */
+    async resetUserTours(): Promise<void> {
+        await CoreUserTours.resetTours();
+        CoreDomUtils.showToast('User tours have been reseted');
     }
 
 }

@@ -12,24 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, ElementRef, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angular/core';
-import { CoreCourse, CoreCourseProvider, CoreCourseWSSection } from '@features/course/services/course';
-import { CoreCourseModuleCompletionData, CoreCourseModuleData } from '@features/course/services/course-helper';
+import { Component, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { CoreCourse, CoreCourseWSSection } from '@features/course/services/course';
+import { CoreCourseHelper, CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { IonContent } from '@ionic/angular';
-import { ScrollDetail } from '@ionic/core';
 import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
-import { CoreMath } from '@singletons/math';
 
 /**
  * Component to show a button to go to the next resource/activity.
  *
  * Example usage:
- * <core-course-module-navigation [courseId]="courseId" [currentModule]="module"></core-course-module-navigation>
+ * <core-course-module-navigation [courseId]="courseId" [currentModuleId]="moduleId"></core-course-module-navigation>
  */
 @Component({
     selector: 'core-course-module-navigation',
@@ -39,32 +37,20 @@ import { CoreMath } from '@singletons/math';
 export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
 
     @Input() courseId!: number; // Course ID.
-    @Input() currentModule!: CoreCourseModuleData; // Current module.
-    @Input() showManualCompletion = true; // Whether to show manual completion, true by default.
-
-    @Output() completionChanged = new EventEmitter<CoreCourseModuleCompletionData>(); // Notify when completion changes.
+    @Input() currentModuleId!: number; // Current module Id.
 
     nextModule?: CoreCourseModuleData;
     previousModule?: CoreCourseModuleData;
     nextModuleSection?: CoreCourseWSSection;
     previousModuleSection?: CoreCourseWSSection;
     loaded = false;
-    showCompletion = false; // Whether to show completion.
+    element: HTMLElement;
 
-    protected element: HTMLElement;
-    protected initialHeight = 0;
-    protected initialPaddingBottom = 0;
-    protected previousTop = 0;
-    protected previousHeight = 0;
-    protected stickTimeout?: number;
-    protected content?: HTMLIonContentElement | null;
     protected completionObserver: CoreEventObserver;
 
-    constructor(el: ElementRef, protected ionContent: IonContent) {
+    constructor(protected ionContent: IonContent, element: ElementRef) {
         const siteId = CoreSites.getCurrentSiteId();
-
-        this.element = el.nativeElement;
-        this.element.setAttribute('slot', 'fixed');
+        this.element = element.nativeElement;
 
         this.completionObserver = CoreEvents.on(CoreEvents.COMPLETION_MODULE_VIEWED, async (data) => {
             if (data && data.courseId == this.courseId) {
@@ -82,74 +68,11 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        this.showCompletion = CoreSites.getRequiredCurrentSite().isVersionGreaterEqualThan('3.11');
-
         try {
             await this.setNextAndPreviousModules(CoreSitesReadingStrategy.PREFER_CACHE);
         } finally {
             this.loaded = true;
-
-            await CoreUtils.nextTicks(50);
-            this.listenScrollEvents();
         }
-    }
-
-    /**
-     * Setup scroll event listener.
-     *
-     * @param retries Number of retries left.
-     */
-    protected async listenScrollEvents(retries = 3): Promise<void> {
-        this.initialHeight = this.element.getBoundingClientRect().height;
-
-        if (this.initialHeight == 0 && retries > 0) {
-            await CoreUtils.nextTicks(50);
-
-            this.listenScrollEvents(retries - 1);
-
-            return;
-        }
-        // Set a minimum height value.
-        this.initialHeight = this.initialHeight || 56;
-        this.previousHeight = this.initialHeight;
-
-        this.content = this.element.closest('ion-content');
-
-        if (!this.content) {
-            return;
-        }
-
-        // Special case where there's no navigation.
-        const courseFormat = this.element.closest('core-course-format.core-course-format-singleactivity');
-        if (courseFormat) {
-            this.element.remove();
-            this.ngOnDestroy();
-
-            return;
-        }
-
-        this.content.classList.add('has-core-course-module-navigation');
-
-        // Move element to the nearest ion-content if it's not the parent.
-        if (this.element.parentElement?.nodeName != 'ION-CONTENT') {
-            this.content.appendChild(this.element);
-        }
-
-        // Set a padding to not overlap elements.
-        this.initialPaddingBottom = parseFloat(this.content.style.getPropertyValue('--padding-bottom') || '0');
-        this.content.style.setProperty('--padding-bottom', this.initialPaddingBottom + this.initialHeight + 'px');
-        const scroll = await this.content.getScrollElement();
-        this.content.scrollEvents = true;
-
-        this.setBarHeight(this.initialHeight);
-        this.content.addEventListener('ionScroll', (e: CustomEvent<ScrollDetail>): void => {
-            if (!this.content) {
-                return;
-            }
-
-            this.onScroll(e.detail, scroll);
-        });
-
     }
 
     /**
@@ -157,7 +80,6 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
      */
     async ngOnDestroy(): Promise<void> {
         this.completionObserver.off();
-        this.content?.style.setProperty('--padding-bottom', this.initialPaddingBottom + 'px');
     }
 
     /**
@@ -178,7 +100,6 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
         }
 
         const preSets = CoreSites.getReadingStrategyPreSets(readingStrategy);
-        const currentModuleId = this.currentModule.id;
 
         const sections = await CoreCourse.getSections(this.courseId, false, true, preSets);
 
@@ -191,7 +112,7 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
                 return false;
             }
 
-            currentModuleIndex = section.modules.findIndex((module: CoreCourseModuleData) => module.id == currentModuleId);
+            currentModuleIndex = section.modules.findIndex((module: CoreCourseModuleData) => module.id == this.currentModuleId);
 
             return currentModuleIndex >= 0;
         });
@@ -249,6 +170,8 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
                 }
             }
         }
+
+        this.element.classList.toggle('empty', !this.nextModule && !this.previousModule);
     }
 
     /**
@@ -258,7 +181,7 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
      * @return Wether the module is available to the user or not.
      */
     protected async isModuleAvailable(module: CoreCourseModuleData): Promise<boolean> {
-        return CoreCourse.instance.moduleHasView(module);
+        return !CoreCourseHelper.isModuleStealth(module) && CoreCourse.instance.moduleHasView(module);
     }
 
     /**
@@ -268,7 +191,7 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
      * @return Wether the module is available to the user or not.
      */
     protected isSectionAvailable(section: CoreCourseWSSection): boolean {
-        return section.uservisible !== false && section.id != CoreCourseProvider.STEALTH_MODULES_SECTION_ID;
+        return CoreCourseHelper.canUserViewSection(section) && !CoreCourseHelper.isSectionStealth(section);
     }
 
     /**
@@ -292,67 +215,27 @@ export class CoreCourseModuleNavigationComponent implements OnInit, OnDestroy {
         if (!module) {
             // It seems the module was hidden. Show a message.
             CoreDomUtils.instance.showErrorModal(
-                next ? 'core.course.gotonextactivitynotfound' : 'core.course.gotopreviousactivitynotfound',
+                next ? 'core.course.nextactivitynotfound' : 'core.course.previousactivitynotfound',
                 true,
             );
 
             return;
         }
 
-        if (module.uservisible === false) {
+        const options: CoreNavigationOptions = {
+            replace: true,
+            animationDirection: next ? 'forward' : 'back',
+        };
+
+        if (!CoreCourseHelper.canUserViewModule(module)) {
             const section = next ? this.nextModuleSection : this.previousModuleSection;
-            const options: CoreNavigationOptions = {
-                replace: true,
-                params: {
-                    module,
-                    section,
-                },
+            options.params = {
+                module,
+                section,
             };
             CoreNavigator.navigateToSitePath('course/' + this.courseId + '/' + module.id +'/module-preview', options);
         } else {
-            CoreCourseModuleDelegate.openActivityPage(module.modname, module, this.courseId, { replace: true });
-        }
-    }
-
-    /**
-     * On scroll function.
-     *
-     * @param scrollDetail Scroll detail object.
-     * @param scrollElement Scroll element to calculate maxScroll.
-     */
-    protected onScroll(scrollDetail: ScrollDetail, scrollElement: HTMLElement): void {
-        const maxScroll = scrollElement.scrollHeight - scrollElement.offsetHeight;
-        if (scrollDetail.scrollTop <= 0 || scrollDetail.scrollTop >= maxScroll) {
-            // Reset.
-            this.setBarHeight(this.initialHeight);
-        } else {
-            let newHeight = this.previousHeight - (scrollDetail.scrollTop - this.previousTop);
-            newHeight = CoreMath.clamp(newHeight, 0, this.initialHeight);
-
-            this.setBarHeight(newHeight);
-        }
-        this.previousTop = scrollDetail.scrollTop;
-    }
-
-    /**
-     * Sets the bar height.
-     *
-     * @param height The new bar height.
-     */
-    protected setBarHeight(height: number): void {
-        if (this.stickTimeout) {
-            clearTimeout(this.stickTimeout);
-        }
-
-        this.element.style.opacity = height <= 0 ? '0' : '1';
-        this.content?.style.setProperty('--core-course-module-navigation-height', height + 'px');
-        this.previousHeight = height;
-
-        if (height > 0 && height < this.initialHeight) {
-            // Finish opening or closing the bar.
-            const newHeight = height < this.initialHeight / 2 ? 0 : this.initialHeight;
-
-            this.stickTimeout = window.setTimeout(() => this.setBarHeight(newHeight), 500);
+            CoreCourseModuleDelegate.openActivityPage(module.modname, module, this.courseId, options);
         }
     }
 

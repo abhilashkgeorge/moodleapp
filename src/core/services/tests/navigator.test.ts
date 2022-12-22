@@ -14,7 +14,7 @@
 
 import { NavController as NavControllerService } from '@ionic/angular';
 
-import { mockSingleton } from '@/testing/utils';
+import { mock, mockSingleton } from '@/testing/utils';
 
 import { CoreNavigatorService } from '@services/navigator';
 import { NavController, Router } from '@singletons';
@@ -108,13 +108,13 @@ describe('CoreNavigator', () => {
         expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main/users/user/42'], {});
     });
 
-    it('navigates to site paths using the default tab', async () => {
+    it('navigates to site paths using the main page', async () => {
         const success = await navigator.navigateToSitePath('/user/42');
 
         expect(success).toBe(true);
-        expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main/home'], {
+        expect(navControllerMock.navigateForward).toHaveBeenCalledWith(['/main'], {
             queryParams: {
-                redirectPath: '/main/home/user/42',
+                redirectPath: 'user/42',
             },
         });
     });
@@ -154,6 +154,22 @@ describe('CoreNavigator', () => {
 
         expect(success).toBe(true);
         expect(navControllerMock.navigateRoot).toHaveBeenCalledWith(['/main/initialpage'], {});
+    });
+
+    it('calculates relative paths to parent paths', () => {
+        navigator = mock(navigator, {
+            getCurrentPath: () => '/foo/bar/baz/xyz',
+        });
+
+        expect(navigator.getRelativePathToParent('/foo/bar/baz/xyz')).toEqual('');
+        expect(navigator.getRelativePathToParent('/foo/bar/baz')).toEqual('../');
+        expect(navigator.getRelativePathToParent('/foo/bar')).toEqual('../../');
+        expect(navigator.getRelativePathToParent('/bar')).toEqual('../../');
+        expect(navigator.getRelativePathToParent('/foo')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('/foo/')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('foo')).toEqual('../../../');
+        expect(navigator.getRelativePathToParent('/invalid')).toEqual('');
+        expect(navigator.getRelativePathToParent('/fo')).toEqual('');
     });
 
     it.todo('navigates to a different site');

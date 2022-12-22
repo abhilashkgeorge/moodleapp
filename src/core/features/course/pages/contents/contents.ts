@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, ViewChild, OnInit, OnDestroy } from '@angular/core';
+import { Component, ViewChild, OnInit, OnDestroy, forwardRef, ChangeDetectorRef } from '@angular/core';
 import { IonContent, IonRefresher } from '@ionic/angular';
 
 import { CoreDomUtils } from '@services/utils/dom';
@@ -29,17 +29,14 @@ import {
 } from '@features/course/services/course-helper';
 import { CoreCourseFormatDelegate } from '@features/course/services/format-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
-import {
-    CoreCourseOptionsDelegate,
-    CoreCourseOptionsMenuHandlerToDisplay,
-} from '@features/course/services/course-options-delegate';
 import { CoreCourseSync, CoreCourseSyncProvider } from '@features/course/services/sync';
-import { CoreCourseFormatComponent } from '../../components/format/format';
+import { CoreCourseFormatComponent } from '../../components/course-format/course-format';
 import {
     CoreEvents,
     CoreEventObserver,
 } from '@singletons/events';
 import { CoreNavigator } from '@services/navigator';
+import { CoreRefreshContext, CORE_REFRESH_CONTEXT } from '@/core/utils/refresh-context';
 
 /**
  * Page that displays the contents of a course.
@@ -47,8 +44,12 @@ import { CoreNavigator } from '@services/navigator';
 @Component({
     selector: 'page-core-course-contents',
     templateUrl: 'contents.html',
+    providers: [{
+        provide: CORE_REFRESH_CONTEXT,
+        useExisting: forwardRef(() => CoreCourseContentsPage),
+    }],
 })
-export class CoreCourseContentsPage implements OnInit, OnDestroy {
+export class CoreCourseContentsPage implements OnInit, OnDestroy, CoreRefreshContext {
 
     @ViewChild(IonContent) content?: IonContent;
     @ViewChild(CoreCourseFormatComponent) formatComponent?: CoreCourseFormatComponent;
@@ -57,8 +58,8 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
     sections?: CoreCourseSection[];
     sectionId?: number;
     sectionNumber?: number;
-    courseMenuHandlers: CoreCourseOptionsMenuHandlerToDisplay[] = [];
     dataLoaded = false;
+    updatingData = false;
     downloadCourseEnabled = false;
     moduleId?: number;
     displayEnableDownload = false;
@@ -66,11 +67,13 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
 
     protected formatOptions?: Record<string, unknown>;
     protected completionObserver?: CoreEventObserver;
+    protected manualCompletionObserver?: CoreEventObserver;
     protected syncObserver?: CoreEventObserver;
     protected isDestroyed = false;
     protected modulesHaveCompletion = false;
-    protected isGuest = false;
     protected debouncedUpdateCachedCompletion?: () => void; // Update the cached completion after a certain time.
+
+    constructor(protected changeDetectorRef: ChangeDetectorRef) {}
 
     /**
      * @inheritdoc
@@ -89,7 +92,6 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
         this.sectionId = CoreNavigator.getRouteNumberParam('sectionId');
         this.sectionNumber = CoreNavigator.getRouteNumberParam('sectionNumber');
         this.moduleId = CoreNavigator.getRouteNumberParam('moduleId');
-        this.isGuest = !!CoreNavigator.getRouteBooleanParam('isGuest');
 
         this.debouncedUpdateCachedCompletion = CoreUtils.debounce(() => {
             if (this.modulesHaveCompletion) {
@@ -119,36 +121,40 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
      * @return Promise resolved when done.
      */
     protected async initListeners(): Promise<void> {
+        if (this.completionObserver) {
+            return; // Already initialized.
+        }
+
         // Check if the course format requires the view to be refreshed when completion changes.
         const shouldRefresh = await CoreCourseFormatDelegate.shouldRefreshWhenCompletionChanges(this.course);
         if (!shouldRefresh) {
             return;
         }
 
-        if (!this.completionObserver) {
-            this.completionObserver = CoreEvents.on(
-                CoreEvents.COMPLETION_MODULE_VIEWED,
-                (data) => {
-                    if (data && data.courseId == this.course.id) {
-                        this.refreshAfterCompletionChange(true);
-                    }
-                },
-            );
-        }
-
-        if (!this.syncObserver) {
-            this.syncObserver = CoreEvents.on(CoreCourseSyncProvider.AUTO_SYNCED, (data) => {
-                if (!data || data.courseId != this.course.id) {
-                    return;
+        this.completionObserver = CoreEvents.on(
+            CoreEvents.COMPLETION_MODULE_VIEWED,
+            (data) => {
+                if (data && data.courseId == this.course.id) {
+                    this.showLoadingAndRefresh(true, false);
                 }
+            },
+        );
 
-                this.refreshAfterCompletionChange(false);
+        this.manualCompletionObserver = CoreEvents.on(CoreEvents.MANUAL_COMPLETION_CHANGED, (data) => {
+            this.onCompletionChange(data.completion);
+        });
 
-                if (data.warnings && data.warnings[0]) {
-                    CoreDomUtils.showErrorModal(data.warnings[0]);
-                }
-            });
-        }
+        this.syncObserver = CoreEvents.on(CoreCourseSyncProvider.AUTO_SYNCED, (data) => {
+            if (!data || data.courseId != this.course.id) {
+                return;
+            }
+
+            this.showLoadingAndRefresh(false, false);
+
+            if (data.warnings && data.warnings[0]) {
+                CoreDomUtils.showErrorModal(data.warnings[0]);
+            }
+        });
     }
 
     /**
@@ -184,7 +190,6 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
         try {
             await Promise.all([
                 this.loadSections(refresh),
-                this.loadMenuHandlers(refresh),
                 this.loadCourseFormatOptions(),
             ]);
         } catch (error) {
@@ -246,16 +251,6 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
 
         // Get whether to show the refresher now that we have sections.
         this.displayRefresher = CoreCourseFormatDelegate.displayRefresher(this.course, this.sections);
-    }
-
-    /**
-     * Load the course menu handlers.
-     *
-     * @param refresh If it's refreshing content.
-     * @return Promise resolved when done.
-     */
-    protected async loadMenuHandlers(refresh?: boolean): Promise<void> {
-        this.courseMenuHandlers = await CoreCourseOptionsDelegate.getMenuHandlersToDisplay(this.course, refresh, this.isGuest);
     }
 
     /**
@@ -328,7 +323,7 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
 
         await CoreUtils.ignoreErrors(this.invalidateData());
 
-        await this.refreshAfterCompletionChange(true);
+        await this.showLoadingAndRefresh(true, false);
     }
 
     /**
@@ -354,57 +349,41 @@ export class CoreCourseContentsPage implements OnInit, OnDestroy {
      * Refresh list after a completion change since there could be new activities.
      *
      * @param sync If it should try to sync.
+     * @param invalidateData Whether to invalidate data. Set it to false if data has already been invalidated.
      * @return Promise resolved when done.
      */
-    protected async refreshAfterCompletionChange(sync?: boolean): Promise<void> {
-        // Save scroll position to restore it once done.
-        const scrollElement = await this.content?.getScrollElement();
-        const scrollTop = scrollElement?.scrollTop || 0;
-        const scrollLeft = scrollElement?.scrollLeft || 0;
-
-        this.dataLoaded = false;
-        this.content?.scrollToTop(0); // Scroll top so the spinner is seen.
+    protected async showLoadingAndRefresh(sync = false, invalidateData = true): Promise<void> {
+        this.updatingData = true;
+        this.changeDetectorRef.detectChanges();
 
         try {
+            if (invalidateData) {
+                await CoreUtils.ignoreErrors(this.invalidateData());
+            }
+
             await this.loadData(true, sync);
 
             await this.formatComponent?.doRefresh(undefined, undefined, true);
         } finally {
-            this.dataLoaded = true;
-
-            // Wait for new content height to be calculated and scroll without animation.
-            setTimeout(() => {
-                this.content?.scrollToPoint(scrollLeft, scrollTop, 0);
-            });
+            this.updatingData = false;
+            this.changeDetectorRef.detectChanges();
         }
     }
 
     /**
-     * Open the course summary
+     * @inheritdoc
      */
-    openCourseSummary(): void {
-        CoreNavigator.navigateToSitePath(
-            '/course/' + this.course.id + '/preview',
-            { params: { course: this.course } },
-        );
+    async refreshContext(): Promise<void> {
+        await this.showLoadingAndRefresh(true, true);
     }
 
     /**
-     * Opens a menu item registered to the delegate.
-     *
-     * @param item Item to open
-     */
-    openMenuItem(item: CoreCourseOptionsMenuHandlerToDisplay): void {
-        const params = Object.assign({ course: this.course }, item.data.pageParams);
-        CoreNavigator.navigateToSitePath(item.data.page, { params });
-    }
-
-    /**
-     * Page destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.completionObserver?.off();
+        this.manualCompletionObserver?.off();
         this.syncObserver?.off();
     }
 

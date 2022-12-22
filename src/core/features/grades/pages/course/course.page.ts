@@ -31,6 +31,7 @@ import { Translate } from '@singletons';
 import { CoreSwipeNavigationItemsManager } from '@classes/items-management/swipe-navigation-items-manager';
 import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
 import { CoreGradesCoursesSource } from '@features/grades/classes/grades-courses-source';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Page that displays a course grades.
@@ -44,6 +45,7 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
 
     courseId!: number;
     userId!: number;
+    gradeId?: number;
     expandLabel!: string;
     collapseLabel!: string;
     title?: string;
@@ -53,10 +55,17 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
     totalColumnsSpan?: number;
     withinSplitView?: boolean;
 
-    constructor(protected route: ActivatedRoute, protected element: ElementRef<HTMLElement>) {
+    protected fetchSuccess = false;
+
+    constructor(
+        protected route: ActivatedRoute,
+        protected element: ElementRef<HTMLElement>,
+    ) {
         try {
             this.courseId = CoreNavigator.getRequiredRouteNumberParam('courseId', { route });
             this.userId = CoreNavigator.getRouteNumberParam('userId', { route }) ?? CoreSites.getCurrentSiteUserId();
+            this.gradeId = CoreNavigator.getRouteNumberParam('gradeId', { route });
+
             this.expandLabel = Translate.instant('core.expand');
             this.collapseLabel = Translate.instant('core.collapse');
 
@@ -86,7 +95,6 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
 
         await this.courses?.start();
         await this.fetchInitialGrades();
-        await CoreGrades.logCourseGradesView(this.courseId, this.userId);
     }
 
     /**
@@ -116,13 +124,14 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
      * Toggle whether a row is expanded or collapsed.
      *
      * @param row Row.
+     * @param expand If defined, force expand or collapse.
      */
-    toggleRow(row: CoreGradesFormattedTableRow): void {
+    toggleRow(row: CoreGradesFormattedTableRow, expand?: boolean): void {
         if (!this.rows || !this.columns) {
             return;
         }
 
-        row.expanded = !row.expanded;
+        row.expanded = expand ?? !row.expanded;
 
         let colspan: number = this.columns.length + (row.colspan ?? 0) - 1;
         for (let i = this.rows.indexOf(row) - 1; i >= 0; i--) {
@@ -155,6 +164,20 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
     private async fetchInitialGrades(): Promise<void> {
         try {
             await this.fetchGrades();
+
+            if (this.gradeId && this.rows) {
+                const row = this.rows.find((row) => row.id == this.gradeId);
+
+                if (row) {
+                    this.toggleRow(row, true);
+
+                    CoreDom.scrollToElement(
+                        this.element.nativeElement,
+                        '#grade-' + row.id,
+                    );
+                    this.gradeId = undefined;
+                }
+            }
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'Error loading course');
 
@@ -168,12 +191,17 @@ export class CoreGradesCoursePage implements AfterViewInit, OnDestroy {
      */
     private async fetchGrades(): Promise<void> {
         const table = await CoreGrades.getCourseGradesTable(this.courseId, this.userId);
-        const formattedTable = await CoreGradesHelper.formatGradesTable(table);
+        const formattedTable = CoreGradesHelper.formatGradesTable(table);
 
         this.title = formattedTable.rows[0]?.gradeitem ?? Translate.instant('core.grades.grades');
         this.columns = formattedTable.columns;
         this.rows = formattedTable.rows;
         this.totalColumnsSpan = formattedTable.columns.reduce((total, column) => total + column.colspan, 0);
+
+        if (!this.fetchSuccess) {
+            this.fetchSuccess = true;
+            await CoreGrades.logCourseGradesView(this.courseId, this.userId);
+        }
     }
 
 }

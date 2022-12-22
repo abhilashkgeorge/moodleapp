@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreSites, CoreSitesCommonWSOptions } from '@services/sites';
-import { FileEntry } from '@ionic-native/file/ngx';
+import { FileEntry, DirectoryEntry } from '@ionic-native/file/ngx';
 import {
     AddonModAssignProvider,
     AddonModAssignAssign,
@@ -43,6 +43,25 @@ import { CoreFileEntry } from '@services/file-helper';
  */
 @Injectable({ providedIn: 'root' })
 export class AddonModAssignHelperProvider {
+
+    /**
+     * Calculate the end time (timestamp) for an assign and submission.
+     *
+     * @param assign Assign instance.
+     * @param submission Submission.
+     * @return End time.
+     */
+    calculateEndTime(assign: AddonModAssignAssign, submission?: AddonModAssignSubmissionFormatted): number {
+        const timeDue = (submission?.timestarted || 0) + (assign.timelimit || 0);
+
+        if (assign.duedate) {
+            return Math.min(timeDue, assign.duedate);
+        } else if (assign.cutoffdate) {
+            return Math.min(timeDue, assign.cutoffdate);
+        }
+
+        return timeDue;
+    }
 
     /**
      * Check if a submission can be edited in offline.

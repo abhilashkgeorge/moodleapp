@@ -21,6 +21,7 @@ import { ContextLevel, CoreConstants } from '@/core/constants';
 import { Translate } from '@singletons';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreNavigator } from '@services/navigator';
+import { CoreCourseHelper } from '@features/course/services/course-helper';
 
 /**
  * Component to render an "activity modules" block.
@@ -28,6 +29,7 @@ import { CoreNavigator } from '@services/navigator';
 @Component({
     selector: 'addon-block-activitymodules',
     templateUrl: 'addon-block-activitymodules.html',
+    styleUrls: ['activitymodules.scss'],
 })
 export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent implements OnInit {
 
@@ -44,7 +46,7 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
      *
      * @return Resolved when done.
      */
-    protected async invalidateContent(): Promise<void> {
+    async invalidateContent(): Promise<void> {
         await CoreCourse.invalidateSections(this.instanceId);
     }
 
@@ -66,7 +68,7 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
             }
 
             section.modules.forEach((mod) => {
-                if (mod.uservisible === false || !CoreCourse.moduleHasView(mod) ||
+                if (!CoreCourseHelper.canUserViewModule(mod, section) || !CoreCourse.moduleHasView(mod) ||
                     modFullNames[mod.modname] !== undefined) {
                     // Ignore this module.
                     return;
@@ -96,16 +98,13 @@ export class AddonBlockActivityModulesComponent extends CoreBlockBaseComponent i
         // Sort the modnames alphabetically.
         modFullNames = CoreUtils.sortValues(modFullNames);
         for (const modName in modFullNames) {
-            let icon: string;
+            const iconModName = modName === 'resources' ? 'page' : modName;
 
-            if (modName === 'resources') {
-                icon = await CoreCourse.getModuleIconSrc('page', modIcons['page']);
-            } else {
-                icon = await CoreCourseModuleDelegate.getModuleIconSrc(modName, modIcons[modName]);
-            }
+            const icon = await CoreCourseModuleDelegate.getModuleIconSrc(iconModName, modIcons[iconModName]);
 
             this.entries.push({
-                icon: icon,
+                icon,
+                iconModName,
                 name: modFullNames[modName],
                 modName,
             });
@@ -145,4 +144,5 @@ type AddonBlockActivityModuleEntry = {
     icon: string;
     name: string;
     modName: string;
+    iconModName: string;
 };

@@ -24,7 +24,7 @@ import { CoreGrades } from '@features/grades/services/grades';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreError } from '@classes/errors/error';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreUtils } from '@services/utils/utils';
 import { AddonModAssignOffline } from './assign-offline';
 import { AddonModAssignSubmissionDelegate } from './submission-delegate';
@@ -49,6 +49,7 @@ declare module '@singletons/events' {
         [AddonModAssignProvider.SUBMISSION_SAVED_EVENT]: AddonModAssignSubmissionSavedEventData;
         [AddonModAssignProvider.SUBMITTED_FOR_GRADING_EVENT]: AddonModAssignSubmittedForGradingEventData;
         [AddonModAssignProvider.GRADED_EVENT]: AddonModAssignGradedEventData;
+        [AddonModAssignProvider.STARTED_EVENT]: AddonModAssignStartedEventData;
         [AddonModAssignSyncProvider.MANUAL_SYNCED]: AddonModAssignManualSyncData;
         [AddonModAssignSyncProvider.AUTO_SYNCED]: AddonModAssignAutoSyncData;
     }
@@ -73,6 +74,7 @@ export class AddonModAssignProvider {
     static readonly SUBMISSION_SAVED_EVENT = 'addon_mod_assign_submission_saved';
     static readonly SUBMITTED_FOR_GRADING_EVENT = 'addon_mod_assign_submitted_for_grading';
     static readonly GRADED_EVENT = 'addon_mod_assign_graded';
+    static readonly STARTED_EVENT = 'addon_mod_assign_started';
 
     /**
      * Check if the user can submit in offline. This should only be used if submissionStatus.lastattempt.cansubmit cannot
@@ -563,7 +565,7 @@ export class AddonModAssignProvider {
         };
 
         try {
-            return this.getSubmissionStatus(assign.id, newOptions);
+            return await this.getSubmissionStatus(assign.id, newOptions);
         } catch {
             // Error, return the first result even if it doesn't have the user submission.
             return response;
@@ -1025,7 +1027,7 @@ export class AddonModAssignProvider {
             return false;
         };
 
-        if (allowOffline && !CoreApp.isOnline()) {
+        if (allowOffline && !CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -1070,6 +1072,35 @@ export class AddonModAssignProvider {
     }
 
     /**
+     * Start a submission.
+     *
+     * @param assignId Assign ID.
+     * @param siteId Site ID. If not defined, use current site.
+     * @return Promise resolved when done.
+     */
+    async startSubmission(assignId: number, siteId?: string): Promise<void> {
+        const site = await CoreSites.getSite(siteId);
+
+        const params: AddonModAssignStartSubmissionWSParams = {
+            assignid: assignId,
+        };
+
+        const result = await site.write<AddonModAssignStartSubmissionWSResponse>('mod_assign_start_submission', params);
+
+        if (!result.warnings?.length) {
+            return;
+        }
+
+        // Ignore some warnings.
+        const warning = result.warnings.find(warning =>
+            warning.warningcode !== 'timelimitnotenabled' && warning.warningcode !== 'opensubmissionexists');
+
+        if (warning) {
+            throw new CoreWSError(warning);
+        }
+    }
+
+    /**
      * Submit the current user assignment for grading.
      *
      * @param assignId Assign ID.
@@ -1106,7 +1137,7 @@ export class AddonModAssignProvider {
             return false;
         };
 
-        if (forceOffline || !CoreApp.isOnline()) {
+        if (forceOffline || !CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -1203,7 +1234,7 @@ export class AddonModAssignProvider {
             return false;
         };
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -1351,6 +1382,11 @@ export type AddonModAssignAssign = {
     introformat?: number; // Intro format (1 = HTML, 0 = MOODLE, 2 = PLAIN or 4 = MARKDOWN).
     introfiles?: CoreWSExternalFile[];
     introattachments?: CoreWSExternalFile[];
+    activity?: string; // @since 4.0. Description of activity.
+    activityformat?: number; // @since 4.0. Format of activity.
+    activityattachments?: CoreWSExternalFile[]; // @since 4.0. Files from activity field.
+    timelimit?: number; // @since 4.0. Time limit to complete assigment.
+    submissionattachments?: number; // @since 4.0. Flag to only show files during submission.
 };
 
 /**
@@ -1395,6 +1431,7 @@ export type AddonModAssignSubmission = {
     latest?: number; // Latest attempt.
     plugins?: AddonModAssignPlugin[]; // Plugins.
     gradingstatus?: AddonModAssignGradingStates; // Grading status.
+    timestarted?: number; // @since 4.0. Submission start time.
 };
 
 /**
@@ -1445,6 +1482,7 @@ export type AddonModAssignSubmissionAttempt = {
     blindmarking: boolean; // Whether blind marking is enabled.
     gradingstatus: AddonModAssignGradingStates; // Grading status.
     usergroups: number[]; // User groups in the course.
+    timelimit?: number; // @since 4.0. Time limit for submission.
 };
 
 /**
@@ -1604,6 +1642,14 @@ export type AddonModAssignGetSubmissionStatusWSResponse = {
     lastattempt?: AddonModAssignSubmissionAttempt; // Last attempt information.
     feedback?: AddonModAssignSubmissionFeedback; // Feedback for the last attempt.
     previousattempts?: AddonModAssignSubmissionPreviousAttempt[]; // List all the previous attempts did by the user.
+    assignmentdata?: { // @since 4.0. Extra information about assignment.
+        attachments?: { // Intro and activity attachments.
+            intro?: CoreWSExternalFile[]; // Intro attachments files.
+            activity?: CoreWSExternalFile[]; // Activity attachments files.
+        };
+        activity?: string; // Text of activity.
+        activityformat?: number; // Format of activity.
+    };
     warnings?: CoreWSExternalWarning[];
 };
 
@@ -1716,6 +1762,25 @@ type AddonModAssignSubmitGradingFormWSParams = {
 };
 
 /**
+ * Params of mod_assign_start_submission WS.
+ *
+ * @since 4.0
+ */
+type AddonModAssignStartSubmissionWSParams = {
+    assignid: number; // Assignment instance id.
+};
+
+/**
+ * Data returned by mod_assign_start_submission WS.
+ *
+ * @since 4.0
+ */
+export type AddonModAssignStartSubmissionWSResponse = {
+    submissionid: number; // New submission ID.
+    warnings?: CoreWSExternalWarning[];
+};
+
+/**
  * Assignment grade outcomes.
  */
 export type AddonModAssignOutcomes = { [itemNumber: number]: number };
@@ -1740,6 +1805,13 @@ export type AddonModAssignSubmissionSavedEventData = AddonModAssignSubmittedForG
 export type AddonModAssignGradedEventData = AddonModAssignSubmittedForGradingEventData;
 
 /**
+ * Data sent by STARTED_EVENT event.
+ */
+export type AddonModAssignStartedEventData = {
+    assignmentId: number;
+};
+
+/**
  * Submission status.
  * Constants on LMS starting with ASSIGN_SUBMISSION_STATUS_
  */
@@ -1753,7 +1825,7 @@ export enum AddonModAssignSubmissionStatusValues {
     NO_ONLINE_SUBMISSIONS = 'noonlinesubmissions',
     NO_SUBMISSION = 'nosubmission',
     GRADED_FOLLOWUP_SUBMIT = 'gradedfollowupsubmit',
-};
+}
 
 /**
  * Grading status.
@@ -1765,7 +1837,7 @@ export enum AddonModAssignGradingStates {
     // Added by App Statuses.
     MARKING_WORKFLOW_STATE_RELEASED = 'released', // with ASSIGN_MARKING_WORKFLOW_STATE_RELEASED
     GRADED_FOLLOWUP_SUBMIT = 'gradedfollowupsubmit',
-};
+}
 
 /**
  * Reopen attempt methods.
@@ -1775,4 +1847,4 @@ export enum AddonModAssignAttemptReopenMethodValues {
     NONE = 'none',
     MANUAL = 'manual',
     UNTILPASS = 'untilpass',
-};
+}

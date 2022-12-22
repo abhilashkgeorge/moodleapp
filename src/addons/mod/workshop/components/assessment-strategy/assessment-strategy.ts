@@ -119,7 +119,7 @@ export class AddonModWorkshopAssessmentStrategyComponent implements OnInit, OnDe
 
             // Load Weights selector.
             if (this.edit && this.access.canallocate) {
-                this.weights;
+                this.weights = [];
                 for (let i = 16; i >= 0; i--) {
                     this.weights[i] = i;
                 }
@@ -135,8 +135,7 @@ export class AddonModWorkshopAssessmentStrategyComponent implements OnInit, OnDe
                 await this.load();
                 this.obsInvalidated = CoreEvents.on(
                     AddonModWorkshopProvider.ASSESSMENT_INVALIDATED,
-                    this.load.bind(this),
-
+                    () => this.load(),
                     CoreSites.getCurrentSiteId(),
                 );
             } catch (error) {
@@ -304,7 +303,11 @@ export class AddonModWorkshopAssessmentStrategyComponent implements OnInit, OnDe
                     files,
                     saveOffline,
                 );
-            } catch {
+            } catch (error) {
+                if (CoreUtils.isWebServiceError(error)) {
+                    throw error;
+                }
+
                 // Cannot upload them in online, save them in offline.
                 saveOffline = true;
                 allowOffline = true;
@@ -343,8 +346,6 @@ export class AddonModWorkshopAssessmentStrategyComponent implements OnInit, OnDe
                     this.workshop.course,
                     assessmentData,
                 );
-
-                gradeUpdated = false;
             } else {
 
                 // Try to send it to server.

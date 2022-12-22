@@ -29,6 +29,11 @@ import { CoreOnResizeDirective } from './on-resize';
 import { CoreDownloadFileDirective } from './download-file';
 import { CoreCollapsibleHeaderDirective } from './collapsible-header';
 import { CoreSwipeNavigationDirective } from './swipe-navigation';
+import { CoreCollapsibleItemDirective } from './collapsible-item';
+import { CoreCollapsibleFooterDirective } from './collapsible-footer';
+import { CoreContentDirective } from './content';
+import { CoreUpdateNonReactiveAttributesDirective } from './update-non-reactive-attributes';
+import { CoreUserTourDirective } from './user-tour';
 
 @NgModule({
     declarations: [
@@ -47,6 +52,11 @@ import { CoreSwipeNavigationDirective } from './swipe-navigation';
         CoreDownloadFileDirective,
         CoreCollapsibleHeaderDirective,
         CoreSwipeNavigationDirective,
+        CoreCollapsibleItemDirective,
+        CoreCollapsibleFooterDirective,
+        CoreContentDirective,
+        CoreUpdateNonReactiveAttributesDirective,
+        CoreUserTourDirective,
     ],
     exports: [
         CoreAutoFocusDirective,
@@ -64,6 +74,11 @@ import { CoreSwipeNavigationDirective } from './swipe-navigation';
         CoreDownloadFileDirective,
         CoreCollapsibleHeaderDirective,
         CoreSwipeNavigationDirective,
+        CoreCollapsibleItemDirective,
+        CoreCollapsibleFooterDirective,
+        CoreContentDirective,
+        CoreUpdateNonReactiveAttributesDirective,
+        CoreUserTourDirective,
     ],
 })
 export class CoreDirectivesModule {}

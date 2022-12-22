@@ -13,15 +13,16 @@
 // limitations under the License.
 
 import { Component, OnInit, Optional } from '@angular/core';
+import { CoreError } from '@classes/errors/error';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse } from '@features/course/services/course';
 import { IonContent } from '@ionic/angular';
+import { CoreApp } from '@services/app';
 import { CoreGroupInfo, CoreGroups } from '@services/groups';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
-import { AddonModBBB, AddonModBBBData, AddonModBBBMeetingInfoWSResponse, AddonModBBBService } from '../../services/bigbluebuttonbn';
+import { AddonModBBB, AddonModBBBData, AddonModBBBMeetingInfo, AddonModBBBService } from '../../services/bigbluebuttonbn';
 
 /**
  * Component that displays a Big Blue Button activity.
@@ -38,7 +39,7 @@ export class AddonModBBBIndexComponent extends CoreCourseModuleMainActivityCompo
     bbb?: AddonModBBBData;
     groupInfo?: CoreGroupInfo;
     groupId = 0;
-    meetingInfo?: AddonModBBBMeetingInfoWSResponse;
+    meetingInfo?: AddonModBBBMeetingInfo;
 
     constructor(
         protected content?: IonContent,
@@ -54,78 +55,94 @@ export class AddonModBBBIndexComponent extends CoreCourseModuleMainActivityCompo
         super.ngOnInit();
 
         await this.loadContent();
+    }
 
+    get showRoom(): boolean {
+        return !!this.meetingInfo && (!this.meetingInfo.features || this.meetingInfo.features.showroom);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async fetchContent(): Promise<void> {
+        this.bbb = await AddonModBBB.getBBB(this.courseId, this.module.id);
+
+        this.description = this.bbb.intro;
+        this.dataRetrieved.emit(this.bbb);
+
+        this.groupInfo = await CoreGroups.getActivityGroupInfo(this.module.id, false);
+
+        this.groupId = CoreGroups.validateGroupId(this.groupId, this.groupInfo);
+
+        if (this.groupInfo.separateGroups && !this.groupInfo.groups.length) {
+            throw new CoreError(Translate.instant('addon.mod_bigbluebuttonbn.view_nojoin'));
+        }
+
+        await this.fetchMeetingInfo();
+    }
+
+    /**
+     * Get meeting info.
+     *
+     * @param updateCache Whether to update info cached data (in server).
+     * @return Promise resolved when done.
+     */
+    async fetchMeetingInfo(updateCache?: boolean): Promise<void> {
         if (!this.bbb) {
             return;
         }
 
         try {
-            await AddonModBBB.logView(this.bbb.id, this.bbb.name);
+            this.meetingInfo = await AddonModBBB.getMeetingInfo(this.bbb.id, this.groupId, {
+                cmId: this.module.id,
+                updateCache,
+            });
 
-            CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-        } catch {
-            // Ignore errors.
+            if (this.meetingInfo.statusrunning && this.meetingInfo.userlimit > 0) {
+                const count = (this.meetingInfo.participantcount || 0) + (this.meetingInfo.moderatorcount || 0);
+                if (count === this.meetingInfo.userlimit) {
+                    this.meetingInfo.statusmessage = Translate.instant('addon.mod_bigbluebuttonbn.userlimitreached');
+                }
+            }
+        } catch (error) {
+            if (error && error.errorcode === 'restrictedcontextexception') {
+                error.message = Translate.instant('addon.mod_bigbluebuttonbn.view_nojoin');
+            }
+
+            throw error;
         }
     }
 
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false): Promise<void> {
-        try {
-            this.bbb = await AddonModBBB.getBBB(this.courseId, this.module.id);
-
-            this.description = this.bbb.intro;
-            this.dataRetrieved.emit(this.bbb);
-
-            this.groupInfo = await CoreGroups.getActivityGroupInfo(this.module.id, false);
-
-            this.groupId = CoreGroups.validateGroupId(this.groupId, this.groupInfo);
-
-            await this.fetchMeetingInfo();
-        } finally {
-            this.fillContextMenu(refresh);
-        }
-    }
-
-    /**
-     * Get meeting info.
-     *
-     * @return Promise resolved when done.
-     */
-    async fetchMeetingInfo(): Promise<void> {
+    protected async logActivity(): Promise<void> {
         if (!this.bbb) {
-            return;
+            return; // Shouldn't happen.
         }
 
-        this.meetingInfo = await AddonModBBB.getMeetingInfo(this.bbb.id, this.groupId);
-
-        if (this.meetingInfo.statusrunning && this.meetingInfo.userlimit > 0) {
-            const count = (this.meetingInfo.participantcount || 0) + (this.meetingInfo.moderatorcount || 0);
-            if (count === this.meetingInfo.userlimit) {
-                this.meetingInfo.statusmessage = Translate.instant('addon.mod_bigbluebuttonbn.userlimitreached');
-            }
-        }
+        await AddonModBBB.logView(this.bbb.id, this.bbb.name);
     }
 
     /**
      * Update meeting info.
      *
+     * @param updateCache Whether to update info cached data (in server).
      * @return Promise resolved when done.
      */
-    async updateMeetingInfo(): Promise<void> {
+    async updateMeetingInfo(updateCache?: boolean): Promise<void> {
         if (!this.bbb) {
             return;
         }
 
-        this.loaded = false;
+        this.showLoading = true;
 
         try {
             await AddonModBBB.invalidateAllGroupsMeetingInfo(this.bbb.id);
 
-            await this.fetchMeetingInfo();
+            await this.fetchMeetingInfo(updateCache);
         } finally {
-            this.loaded = true;
+            this.showLoading = false;
         }
     }
 
@@ -151,14 +168,14 @@ export class AddonModBBBIndexComponent extends CoreCourseModuleMainActivityCompo
      * @return Promise resolved when done.
      */
     async groupChanged(): Promise<void> {
-        this.loaded = false;
+        this.showLoading = true;
 
         try {
             await this.fetchMeetingInfo();
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
         } finally {
-            this.loaded = true;
+            this.showLoading = false;
         }
     }
 
@@ -173,9 +190,14 @@ export class AddonModBBBIndexComponent extends CoreCourseModuleMainActivityCompo
         try {
             const joinUrl = await AddonModBBB.getJoinUrl(this.module.id, this.groupId);
 
-            CoreUtils.openInBrowser(joinUrl);
+            await CoreUtils.openInBrowser(joinUrl, {
+                showBrowserWarning: false,
+            });
 
-            this.updateMeetingInfo();
+            // Leave some time for the room to load.
+            await CoreApp.waitForResume(10000);
+
+            this.updateMeetingInfo(true);
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
         } finally {

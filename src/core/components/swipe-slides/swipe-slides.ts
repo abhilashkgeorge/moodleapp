@@ -18,6 +18,8 @@ import {
 import { CoreSwipeSlidesItemsManager } from '@classes/items-management/swipe-slides-items-manager';
 import { IonContent, IonSlides } from '@ionic/angular';
 import { CoreDomUtils, VerticalPoint } from '@services/utils/dom';
+import { CoreDom } from '@singletons/dom';
+import { CoreEventObserver } from '@singletons/events';
 import { CoreMath } from '@singletons/math';
 
 /**
@@ -40,12 +42,17 @@ export class CoreSwipeSlidesComponent<Item = unknown> implements OnChanges, OnDe
 
     protected hostElement: HTMLElement;
     protected unsubscribe?: () => void;
+    protected resizeListener: CoreEventObserver;
 
     constructor(
         elementRef: ElementRef<HTMLElement>,
         protected content?: IonContent,
     ) {
         this.hostElement = elementRef.nativeElement;
+
+        this.resizeListener = CoreDom.onWindowResize(() => {
+            this.slides?.update();
+        });
     }
 
     /**
@@ -181,17 +188,8 @@ export class CoreSwipeSlidesComponent<Item = unknown> implements OnChanges, OnDe
 
         this.onWillChange.emit(currentItemData);
 
-        if (this.options.scrollOnChange !== 'top') {
-            return;
-        }
-
-        // Scroll top. This can be improved in the future to keep the scroll for each slide.
-        const scrollElement = await this.content?.getScrollElement();
-
-        if (!scrollElement || CoreDomUtils.isElementOutsideOfScreen(scrollElement, this.hostElement, VerticalPoint.TOP)) {
-            // Scroll to top.
-            this.hostElement.scrollIntoView({ behavior: 'smooth' });
-        }
+        // Apply scroll on change. In some devices it's too soon to do it, that's why it's done again in DidChange.
+        await this.applyScrollOnChange();
     }
 
     /**
@@ -204,6 +202,27 @@ export class CoreSwipeSlidesComponent<Item = unknown> implements OnChanges, OnDe
         }
 
         this.onDidChange.emit(currentItemData);
+
+        await this.applyScrollOnChange();
+    }
+
+    /**
+     * Treat scroll on change.
+     *
+     * @return Promise resolved when done.
+     */
+    protected async applyScrollOnChange(): Promise<void> {
+        if (this.options.scrollOnChange !== 'top') {
+            return;
+        }
+
+        // Scroll top. This can be improved in the future to keep the scroll for each slide.
+        const scrollElement = await this.content?.getScrollElement();
+
+        if (!scrollElement || CoreDomUtils.isElementOutsideOfScreen(scrollElement, this.hostElement, VerticalPoint.TOP)) {
+            // Scroll to top.
+            this.hostElement.scrollIntoView({ behavior: 'smooth' });
+        }
     }
 
     /**
@@ -235,6 +254,7 @@ export class CoreSwipeSlidesComponent<Item = unknown> implements OnChanges, OnDe
      */
     ngOnDestroy(): void {
         this.unsubscribe && this.unsubscribe();
+        this.resizeListener.off();
     }
 
 }

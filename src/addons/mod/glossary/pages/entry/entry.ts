@@ -55,6 +55,7 @@ export class AddonModGlossaryEntryPage implements OnInit, OnDestroy {
     tagsEnabled = false;
     commentsEnabled = false;
     courseId!: number;
+    cmId?: number;
 
     protected entryId!: number;
 
@@ -72,15 +73,17 @@ export class AddonModGlossaryEntryPage implements OnInit, OnDestroy {
             this.commentsEnabled = !CoreComments.areCommentsDisabledInSite();
 
             if (routeData.swipeEnabled ?? true) {
-                const cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
+                this.cmId = CoreNavigator.getRequiredRouteNumberParam('cmId');
                 const source = CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(
                     AddonModGlossaryEntriesSource,
-                    [this.courseId, cmId, routeData.glossaryPathPrefix ?? ''],
+                    [this.courseId, this.cmId, routeData.glossaryPathPrefix ?? ''],
                 );
 
                 this.entries = new AddonModGlossaryEntryEntriesSwipeManager(source);
 
                 await this.entries.start();
+            } else {
+                this.cmId = CoreNavigator.getRouteNumberParam('cmId');
             }
         } catch (error) {
             CoreDomUtils.showErrorModal(error);

@@ -12,16 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { AddonLegacyNotificationsNotificationsSource } from '@addons/notifications/classes/legacy-notifications-source';
+import { AddonNotificationsNotificationsSource } from '@addons/notifications/classes/notifications-source';
 import { AddonNotificationsNotificationData } from '@addons/notifications/services/handlers/push-click';
-import { AddonNotifications } from '@addons/notifications/services/notifications';
 import {
     AddonNotificationsHelper,
     AddonNotificationsNotificationToRender,
 } from '@addons/notifications/services/notifications-helper';
-import { Component, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { ActivatedRouteSnapshot } from '@angular/router';
+import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
+import { CoreSwipeNavigationItemsManager } from '@classes/items-management/swipe-navigation-items-manager';
+import { CoreContentLinksAction, CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreNavigator } from '@services/navigator';
+import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreUtils } from '@services/utils/utils';
 
 /**
  * Page to render a notification.
@@ -29,10 +34,11 @@ import { CoreUtils } from '@services/utils/utils';
 @Component({
     selector: 'page-addon-notifications-notification',
     templateUrl: 'notification.html',
-    styleUrls: ['../../notifications.scss'],
+    styleUrls: ['../../notifications.scss', 'notification.scss'],
 })
-export class AddonNotificationsNotificationPage implements OnInit {
+export class AddonNotificationsNotificationPage implements OnInit, OnDestroy {
 
+    notifications?: AddonNotificationSwipeItemsManager;
     subject = ''; // Notification subject.
     content = ''; // Notification content.
     userIdFrom = -1; // User ID who sent the notification.
@@ -41,34 +47,27 @@ export class AddonNotificationsNotificationPage implements OnInit {
     iconUrl?: string; // Icon URL.
     modname?: string; // Module name.
     loaded = false;
+    timecreated = 0;
+
+    // Actions data.
+    actions: CoreContentLinksAction[] = [];
+    contextUrl?: string;
+    courseId?: number;
+    actionsData?: Record<string, unknown>; // Extra data to handle the URL.
 
     /**
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        let notification: AddonNotificationsNotificationToRender | AddonNotificationsNotificationData;
+        let notification: AddonNotificationsNotification;
 
         try {
-            notification = CoreNavigator.getRequiredRouteParam('notification');
+            notification = this.getNotification();
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
-
             CoreNavigator.back();
 
             return;
-        }
-
-        if (!('subject' in notification)) {
-            // Try to find the notification using the WebService, it contains a better message.
-            const notifId = Number(notification.savedmessageid);
-            const result = await CoreUtils.ignoreErrors(
-                AddonNotifications.getNotifications([], { siteId: notification.site }),
-            );
-
-            const foundNotification = result?.notifications.find(notif => notif.id === notifId);
-            if (foundNotification) {
-                notification = AddonNotificationsHelper.formatNotificationText(foundNotification);
-            }
         }
 
         if ('subject' in notification) {
@@ -85,6 +84,7 @@ export class AddonNotificationsNotificationPage implements OnInit {
                     this.modname = modname;
                 }
             }
+            this.timecreated = notification.timecreated;
         } else {
             this.subject = notification.title || '';
             this.content = notification.message || '';
@@ -93,7 +93,141 @@ export class AddonNotificationsNotificationPage implements OnInit {
             this.userFromFullName = notification.userfromfullname;
         }
 
+        await this.loadActions(notification);
+        AddonNotificationsHelper.markNotificationAsRead(notification);
+
         this.loaded = true;
     }
 
+    /**
+     * Get notification.
+     *
+     * @returns notification.
+     */
+    getNotification(): AddonNotificationsNotification {
+        const id = CoreNavigator.getRouteNumberParam('id');
+        const notification = id ? this.getNotificationById(id) : undefined;
+
+        return notification ?? CoreNavigator.getRequiredRouteParam('notification');
+    }
+
+    /**
+     * Obtain notification by passed id.
+     *
+     * @param notificationId Notification id.
+     * @return Found notification.
+     */
+    getNotificationById(notificationId: number): AddonNotificationsNotification | undefined {
+        const source = CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(
+            CoreSites.getRequiredCurrentSite().isVersionGreaterEqualThan('4.0')
+                ? AddonNotificationsNotificationsSource
+                : AddonLegacyNotificationsNotificationsSource,
+            [],
+        );
+        const notification = source.getItems()?.find(({ id }) => id === notificationId);
+
+        if (!notification) {
+            return;
+        }
+
+        this.loadNotifications(source);
+
+        return notification;
+    }
+
+    /**
+     * Load notifications from source.
+     *
+     * @param source Notifications source
+     */
+    async loadNotifications(source: AddonNotificationsNotificationsSource): Promise<void> {
+        this.notifications = new AddonNotificationSwipeItemsManager(source);
+
+        await this.notifications.start();
+    }
+
+    /**
+     * Load notification actions
+     *
+     * @param notification Notification.
+     * @return Promise resolved when done.
+     */
+    async loadActions(notification: AddonNotificationsNotification): Promise<void> {
+        if (!notification.contexturl && (!notification.customdata || !notification.customdata.appurl)) {
+            // No URL, nothing to do.
+            return;
+        }
+
+        let actions: CoreContentLinksAction[] = [];
+        this.actionsData = notification.customdata;
+        this.contextUrl = notification.contexturl;
+        this.courseId = 'courseid' in notification ? notification.courseid : undefined;
+
+        // Treat appurl first if any.
+        if (this.actionsData?.appurl) {
+            actions = await CoreContentLinksDelegate.getActionsFor(
+                <string> this.actionsData.appurl,
+                this.courseId,
+                undefined,
+                this.actionsData,
+            );
+        }
+
+        if (!actions.length && this.contextUrl) {
+            // No appurl or cannot handle it. Try with contextUrl.
+            actions = await CoreContentLinksDelegate.getActionsFor(this.contextUrl, this.courseId, undefined, this.actionsData);
+        }
+
+        if (!actions.length) {
+            // URL is not supported. Add an action to open it in browser.
+            actions.push({
+                message: 'core.view',
+                icon: 'fas-eye',
+                action: (siteId) => this.openInBrowser(siteId),
+            });
+        }
+
+        this.actions = actions;
+    }
+
+    /**
+     * Default action. Open in browser.
+     *
+     * @param siteId Site ID to use.
+     */
+    protected async openInBrowser(siteId?: string): Promise<void> {
+        const url = <string> this.actionsData?.appurl || this.contextUrl;
+
+        if (!url) {
+            return;
+        }
+
+        const site = await CoreSites.getSite(siteId);
+
+        site.openInBrowserWithAutoLogin(url);
+    }
+
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        this.notifications?.destroy();
+    }
+
 }
+
+/**
+ * Helper to manage swiping within a collection of notifications.
+ */
+class AddonNotificationSwipeItemsManager extends CoreSwipeNavigationItemsManager {
+
+    /**
+     * @inheritdoc
+     */
+    protected getSelectedItemPathFromRoute(route: ActivatedRouteSnapshot): string | null {
+        return route.params.id;
+    }
+
+}
+
+type AddonNotificationsNotification = AddonNotificationsNotificationToRender | AddonNotificationsNotificationData;

@@ -12,8 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Input } from '@angular/core';
+import { Component, ElementRef, Input, OnDestroy, OnInit } from '@angular/core';
+import { CoreCancellablePromise } from '@classes/cancellable-promise';
+import { CoreUserTourDirectiveOptions } from '@directives/user-tour';
+import { CoreUserToursAlignment, CoreUserToursSide } from '@features/usertours/services/user-tours';
 import { CoreDomUtils } from '@services/utils/dom';
+import { CoreDom } from '@singletons/dom';
+import { CoreBlockSideBlocksTourComponent } from '../side-blocks-tour/side-blocks-tour';
 import { CoreBlockSideBlocksComponent } from '../side-blocks/side-blocks';
 
 /**
@@ -24,9 +29,37 @@ import { CoreBlockSideBlocksComponent } from '../side-blocks/side-blocks';
     templateUrl: 'side-blocks-button.html',
     styleUrls: ['side-blocks-button.scss'],
 })
-export class CoreBlockSideBlocksButtonComponent {
+export class CoreBlockSideBlocksButtonComponent implements OnInit, OnDestroy {
 
-    @Input() courseId!: number;
+    @Input() contextLevel!: string;
+    @Input() instanceId!: number;
+    @Input() myDashboardPage?: string;
+
+    userTour: CoreUserTourDirectiveOptions = {
+        id: 'side-blocks-button',
+        component: CoreBlockSideBlocksTourComponent,
+        side: CoreUserToursSide.Start,
+        alignment: CoreUserToursAlignment.Center,
+        getFocusedElement: nativeButton => {
+            const innerButton = Array.from(nativeButton.shadowRoot?.children ?? []).find(child => child.tagName === 'BUTTON');
+
+            return innerButton as HTMLElement ?? nativeButton;
+        },
+    };
+
+    protected element: HTMLElement;
+    protected slotPromise?: CoreCancellablePromise<void>;
+
+    constructor(el: ElementRef) {
+        this.element = el.nativeElement;
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async ngOnInit(): Promise<void> {
+        this.slotPromise = CoreDom.slotOnContent(this.element);
+    }
 
     /**
      * Open side blocks.
@@ -35,9 +68,18 @@ export class CoreBlockSideBlocksButtonComponent {
         CoreDomUtils.openSideModal({
             component: CoreBlockSideBlocksComponent,
             componentProps: {
-                courseId: this.courseId,
+                contextLevel: this.contextLevel,
+                instanceId: this.instanceId,
+                myDashboardPage: this.myDashboardPage,
             },
         });
+    }
+
+    /**
+     * @inheritdoc
+     */
+    ngOnDestroy(): void {
+        this.slotPromise?.cancel();
     }
 
 }

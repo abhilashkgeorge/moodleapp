@@ -1,88 +1,46 @@
 @import "~theme/globals";
 
 :host {
-    ::ng-deep {
-        core-user-avatar .core-avatar-extra {
+    --extra-icon-size: 16px;
+    --icon-size: 24px;
+
+    ::ng-deep core-user-avatar {
+        .core-avatar-extra-img,
+        core-mod-icon {
             margin: 0 !important;
             position: absolute;
             right: -4px;
             bottom: -4px;
-        }
-        core-user-avatar img.core-avatar-extra {
-            background: none;
-            width: 24px;
-            height: 24px;
-            border-radius: 0 !important;
-        }
-        core-user-avatar core-mod-icon.core-avatar-extra {
-            --size: 16px;
             padding: 0.2rem;
         }
+
+        .core-avatar-extra-img {
+            background: var(--background-color);
+            border-radius: var(--medium-radius);
+            img {
+                max-width: var(--extra-icon-size);
+                max-height: var(--extra-icon-size);
+                display: block;
+            }
+        }
+
+        core-mod-icon  {
+            --size: var(--extra-icon-size);
+        }
+    }
+
+    div.core-notification-icon {
+        img {
+            width: var(--icon-size);
+            height: var(--icon-size);
+        }
+        padding: 0.7rem;
+        background: var(--background-color);
+        border-radius: var(--small-radius);
     }
 
     .core-notification-icon {
-        width: 34px;
-        height: 34px;
-        margin: 10px !important;
-    }
-
-    .item core-format-text ::ng-deep {
-        .forumpost {
-            border: 1px solid var(--gray-light);
-            width: 100%;
-            margin: 0 0 1em 0;
-
-            td {
-                padding: 10px;
-            }
-
-            .header {
-                background-color: var(--gray-lighter);
-
-                .picture {
-                    width: 48px;
-                    text-align: center;
-                    @include padding-horizontal(4px, 0px);
-                    padding-top: 8px;
-
-                    img {
-                        width: 44px !important;
-                    }
-                }
-            }
-
-            .subject {
-                font-weight: 700;
-                margin-bottom: 1rem;
-            }
-        }
-
-        a {
-            text-decoration: none;
-        }
-
-        .userpicture {
-            border-radius: 50%;
-        }
-
-        .mdl-right {
-            text-align: end;
-            a {
-                display: none;
-            }
-            font {
-                font-size: 0.9em;
-            }
-        }
-
-        .commands {
-            display: none;
-        }
-
-        hr {
-            margin-top: 1.5rem;
-            margin-bottom: 1.5rem;
-            background-color: var(--gray-light);
-        }
+        --module-icon-size: var(--icon-size);
+        @include margin(6px, 8px, 6px, 0px);
     }
 }

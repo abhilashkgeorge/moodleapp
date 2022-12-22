@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { FileEntry } from '@ionic-native/file/ngx';
 import { CoreFileUploader, CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreUser } from '@features/user/services/user';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFile } from '@services/file';
 import { CoreSites } from '@services/sites';
 import { CoreTimeUtils } from '@services/utils/time';
@@ -106,6 +106,10 @@ export class AddonModForumHelperProvider {
             try {
                 await Promise.all(promises);
             } catch (error) {
+                if (CoreUtils.isWebServiceError(error)) {
+                    throw error;
+                }
+
                 // Cannot upload them in online, save them in offline.
                 saveOffline = true;
 
@@ -120,7 +124,7 @@ export class AddonModForumHelperProvider {
             await AddonModForumOffline.deleteNewDiscussion(forumId, timeCreated, siteId);
         }
 
-        if (saveOffline || !CoreApp.isOnline()) {
+        if (saveOffline || !CoreNetwork.isOnline()) {
             await storeOffline();
 
             return null;
@@ -274,23 +278,26 @@ export class AddonModForumHelperProvider {
      * Returns the availability message of the given forum.
      *
      * @param forum Forum instance.
+     * @param getDueDateMessage Whether to get due date message. If false, only cutoff date message will be returned.
      * @return Message or null if the forum has no cut-off or due date.
      */
-    getAvailabilityMessage(forum: AddonModForumData): string | null {
+    getAvailabilityMessage(forum: AddonModForumData, getDueDateMessage = true): string | null {
         if (this.isCutoffDateReached(forum)) {
             return Translate.instant('addon.mod_forum.cutoffdatereached');
         }
 
-        if (this.isDueDateReached(forum)) {
-            const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
+        if (getDueDateMessage) {
+            if (this.isDueDateReached(forum)) {
+                const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
 
-            return Translate.instant('addon.mod_forum.thisforumisdue', { $a: dueDate });
-        }
+                return Translate.instant('addon.mod_forum.thisforumisdue', { $a: dueDate });
+            }
 
-        if ((forum.duedate ?? 0) > 0) {
-            const dueDate = CoreTimeUtils.userDate(forum.duedate! * 1000);
+            if (forum.duedate && forum.duedate > 0) {
+                const dueDate = CoreTimeUtils.userDate(forum.duedate * 1000);
 
-            return Translate.instant('addon.mod_forum.thisforumhasduedate', { $a: dueDate });
+                return Translate.instant('addon.mod_forum.thisforumhasduedate', { $a: dueDate });
+            }
         }
 
         return null;

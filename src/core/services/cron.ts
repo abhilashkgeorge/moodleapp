@@ -15,15 +15,18 @@
 import { Injectable } from '@angular/core';
 
 import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreConfig } from '@services/config';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
-import { SQLiteDB } from '@classes/sqlitedb';
 import { CoreError } from '@classes/errors/error';
 
-import { makeSingleton } from '@singletons';
+import { makeSingleton, Translate } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { APP_SCHEMA, CRON_TABLE_NAME, CronDBEntry } from '@services/database/cron';
+import { asyncInstance } from '../utils/async-instance';
+import { CoreDatabaseTable } from '@classes/database/database-table';
+import { CoreDatabaseCachingStrategy, CoreDatabaseTableProxy } from '@classes/database/database-table-proxy';
 
 /*
  * Service to handle cron processes. The registered processes will be executed every certain time.
@@ -39,13 +42,9 @@ export class CoreCronDelegateService {
     protected logger: CoreLogger;
     protected handlers: { [s: string]: CoreCronHandler } = {};
     protected queuePromise: Promise<void> = Promise.resolve();
-
-    // Variables for DB.
-    protected appDB: Promise<SQLiteDB>;
-    protected resolveAppDB!: (appDB: SQLiteDB) => void;
+    protected table = asyncInstance<CoreDatabaseTable<CronDBEntry>>();
 
     constructor() {
-        this.appDB = new Promise(resolve => this.resolveAppDB = resolve);
         this.logger = CoreLogger.getInstance('CoreCronDelegate');
     }
 
@@ -59,7 +58,15 @@ export class CoreCronDelegateService {
             // Ignore errors.
         }
 
-        this.resolveAppDB(CoreApp.getDB());
+        const table = new CoreDatabaseTableProxy<CronDBEntry>(
+            { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
+            CoreApp.getDB(),
+            CRON_TABLE_NAME,
+        );
+
+        await table.initialize();
+
+        this.table.setInstance(table);
     }
 
     /**
@@ -74,35 +81,34 @@ export class CoreCronDelegateService {
     protected async checkAndExecuteHandler(name: string, force?: boolean, siteId?: string): Promise<void> {
         if (!this.handlers[name] || !this.handlers[name].execute) {
             // Invalid handler.
-            const message = `Cannot execute handler because is invalid: ${name}`;
-            this.logger.debug(message);
+            this.logger.debug(`Cannot execute cron job because is invalid: ${name}`);
 
-            throw new CoreError(message);
+            throw new CoreError(
+                Translate.instant('core.errorsomethingwrong') + '<br>' + Translate.instant('core.errorsitesupport'),
+            );
         }
 
         const usesNetwork = this.handlerUsesNetwork(name);
         const isSync = !force && this.isHandlerSync(name);
 
-        if (usesNetwork && !CoreApp.isOnline()) {
+        if (usesNetwork && !CoreNetwork.isOnline()) {
             // Offline, stop executing.
-            const message = `Cannot execute handler because device is offline: ${name}`;
-            this.logger.debug(message);
+            this.logger.debug(`Cron job failed because your device is not connected to the internet: ${name}`);
             this.stopHandler(name);
 
-            throw new CoreError(message);
+            throw new CoreError(Translate.instant('core.settings.cannotsyncoffline'));
         }
 
         if (isSync) {
             // Check network connection.
             const syncOnlyOnWifi = await CoreConfig.get(CoreConstants.SETTINGS_SYNC_ONLY_ON_WIFI, false);
 
-            if (syncOnlyOnWifi && !CoreApp.isWifi()) {
+            if (syncOnlyOnWifi && !CoreNetwork.isWifi()) {
                 // Cannot execute in this network connection, retry soon.
-                const message = `Cannot execute handler because device is using limited connection: ${name}`;
-                this.logger.debug(message);
+                this.logger.debug(`Cron job failed because your device has a limited internet connection: ${name}`);
                 this.scheduleNextExecution(name, CoreCronDelegateService.MIN_INTERVAL);
 
-                throw new CoreError(message);
+                throw new CoreError(Translate.instant('core.settings.cannotsyncwithoutwifi'));
             }
         }
 
@@ -111,7 +117,7 @@ export class CoreCronDelegateService {
             try {
                 await this.executeHandler(name, force, siteId);
 
-                this.logger.debug(`Execution of handler '${name}' was a success.`);
+                this.logger.debug(`Cron job '${name}' was successfully executed.`);
 
                 await CoreUtils.ignoreErrors(this.setHandlerLastExecutionTime(name, Date.now()));
 
@@ -120,11 +126,10 @@ export class CoreCronDelegateService {
                 return;
             } catch (error) {
                 // Handler call failed. Retry soon.
-                const message = `Execution of handler '${name}' failed.`;
-                this.logger.error(message, error);
+                this.logger.error(`Cron job '${name}' failed.`, error);
                 this.scheduleNextExecution(name, CoreCronDelegateService.MIN_INTERVAL);
 
-                throw new CoreError(message);
+                throw error;
             }
         });
 
@@ -238,11 +243,10 @@ export class CoreCronDelegateService {
      * @return Promise resolved with the handler's last execution time.
      */
     protected async getHandlerLastExecutionTime(name: string): Promise<number> {
-        const db = await this.appDB;
         const id = this.getHandlerLastExecutionId(name);
 
         try {
-            const entry = await db.getRecord<CronDBEntry>(CRON_TABLE_NAME, { id });
+            const entry = await this.table.getOneByPrimaryKey({ id });
 
             const time = Number(entry.value);
 
@@ -397,14 +401,13 @@ export class CoreCronDelegateService {
      * @return Promise resolved when the execution time is saved.
      */
     protected async setHandlerLastExecutionTime(name: string, time: number): Promise<void> {
-        const db = await this.appDB;
         const id = this.getHandlerLastExecutionId(name);
         const entry = {
             id,
             value: time,
         };
 
-        await db.insertRecord(CRON_TABLE_NAME, entry);
+        await this.table.insert(entry);
     }
 
     /**

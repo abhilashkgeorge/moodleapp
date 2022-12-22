@@ -72,8 +72,9 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
     loadMoreError = false;
     loadingMessage: string;
     promisedEntries: CorePromisedValue<AddonModGlossaryEntriesManager>;
-    hasOfflineRatings = false;
 
+    protected hasOfflineEntries = false;
+    protected hasOfflineRatings = false;
     protected syncEventName = AddonModGlossarySyncProvider.AUTO_SYNCED;
     protected addEntryObserver?: CoreEventObserver;
     protected fetchedEntriesCanLoadMore = false;
@@ -81,12 +82,13 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
     protected sourceUnsubscribe?: () => void;
     protected ratingOfflineObserver?: CoreEventObserver;
     protected ratingSyncObserver?: CoreEventObserver;
+    protected checkCompletionAfterLog = false; // Use CoreListItemsManager log system instead.
 
     getDivider?: (entry: AddonModGlossaryEntry) => string;
     showDivider: (entry: AddonModGlossaryEntry, previous?: AddonModGlossaryEntry) => boolean = () => false;
 
     constructor(
-        protected route: ActivatedRoute,
+        public route: ActivatedRoute,
         protected content?: IonContent,
         @Optional() protected courseContentsPage?: CoreCourseContentsPage,
     ) {
@@ -124,13 +126,13 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
             [this.courseId, this.module.id, this.courseContentsPage ? `${AddonModGlossaryModuleHandlerService.PAGE_NAME}/` : ''],
         );
 
-        this.promisedEntries.resolve(new AddonModGlossaryEntriesManager(
-            source,
-            this.route.component,
-        ));
+        this.promisedEntries.resolve(new AddonModGlossaryEntriesManager(source, this));
 
         this.sourceUnsubscribe = source.addListener({
-            onItemsUpdated: items => this.hasOffline = !!items.find(item => source.isOfflineEntry(item)),
+            onItemsUpdated: (items) => {
+                this.hasOfflineEntries = !!items.find(item => source.isOfflineEntry(item));
+                this.hasOffline = this.hasOfflineEntries || this.hasOfflineRatings;
+            },
         });
 
         // When an entry is added, we reload the data.
@@ -139,7 +141,7 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
                 this.showLoadingAndRefresh(false);
 
                 // Check completion since it could be configured to complete once the user adds a new entry.
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
+                this.checkCompletion();
             }
         });
 
@@ -148,12 +150,14 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
             if (this.glossary && data.component == 'mod_glossary' && data.ratingArea == 'entry' && data.contextLevel == 'module'
                     && data.instanceId == this.glossary.coursemodule) {
                 this.hasOfflineRatings = true;
+                this.hasOffline = true;
             }
         });
         this.ratingSyncObserver = CoreEvents.on(CoreRatingSyncProvider.SYNCED_EVENT, (data) => {
             if (this.glossary && data.component == 'mod_glossary' && data.ratingArea == 'entry' && data.contextLevel == 'module'
                     && data.instanceId == this.glossary.coursemodule) {
                 this.hasOfflineRatings = false;
+                this.hasOffline = this.hasOfflineEntries;
             }
         });
     }
@@ -166,50 +170,41 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
 
         await this.loadContent(false, true);
         await entries.start(this.splitView);
-
-        try {
-            CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-        } catch (error) {
-            // Ignore errors.
-        }
     }
 
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
+    protected async fetchContent(refresh = false, sync = false, showErrors = false): Promise<void> {
         const entries = await this.promisedEntries;
 
-        try {
-            await entries.getSource().loadGlossary();
+        await entries.getSource().loadGlossary();
 
-            if (!this.glossary) {
-                return;
-            }
-
-            this.description = this.glossary.intro || this.description;
-            this.canAdd = !!this.glossary.canaddentry || false;
-
-            this.dataRetrieved.emit(this.glossary);
-
-            if (!entries.getSource().fetchMode) {
-                this.switchMode('letter_all');
-            }
-
-            if (sync) {
-                // Try to synchronize the glossary.
-                await this.syncActivity(showErrors);
-            }
-
-            const [hasOfflineRatings] = await Promise.all([
-                CoreRatingOffline.hasRatings('mod_glossary', 'entry', ContextLevel.MODULE, this.glossary.coursemodule),
-                refresh ? entries.reload() : entries.load(),
-            ]);
-
-            this.hasOfflineRatings = hasOfflineRatings;
-        } finally {
-            this.fillContextMenu(refresh);
+        if (!this.glossary) {
+            return;
         }
+
+        this.description = this.glossary.intro || this.description;
+        this.canAdd = !!this.glossary.canaddentry || false;
+
+        this.dataRetrieved.emit(this.glossary);
+
+        if (!entries.getSource().fetchMode) {
+            this.switchMode('letter_all');
+        }
+
+        if (sync) {
+            // Try to synchronize the glossary.
+            await this.syncActivity(showErrors);
+        }
+
+        const [hasOfflineRatings] = await Promise.all([
+            CoreRatingOffline.hasRatings('mod_glossary', 'entry', ContextLevel.MODULE, this.glossary.coursemodule),
+            refresh ? entries.reload() : entries.load(),
+        ]);
+
+        this.hasOfflineRatings = hasOfflineRatings;
+        this.hasOffline = this.hasOfflineEntries || this.hasOfflineRatings;
     }
 
     /**
@@ -397,7 +392,7 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
         this.loadingMessage = Translate.instant('core.loading');
         this.content?.scrollToTop();
         this.switchMode(mode);
-        this.loaded = false;
+        this.showLoading = true;
         this.loadContent();
     }
 
@@ -415,7 +410,7 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
      */
     search(query: string): void {
         this.loadingMessage = Translate.instant('core.searching');
-        this.loaded = false;
+        this.showLoading = true;
 
         this.entries?.getSource().search(query);
         this.loadContent();
@@ -440,6 +435,14 @@ export class AddonModGlossaryIndexComponent extends CoreCourseModuleMainActivity
  * Entries manager.
  */
 class AddonModGlossaryEntriesManager extends CoreListItemsManager<AddonModGlossaryEntryItem, AddonModGlossaryEntriesSource> {
+
+    page: AddonModGlossaryIndexComponent;
+
+    constructor(source: AddonModGlossaryEntriesSource, page: AddonModGlossaryIndexComponent) {
+        super(source, page.route.component);
+
+        this.page = page;
+    }
 
     get offlineEntries(): AddonModGlossaryOfflineEntry[] {
         return this.getSource().offlineEntries;
@@ -467,7 +470,22 @@ class AddonModGlossaryEntriesManager extends CoreListItemsManager<AddonModGlossa
             return;
         }
 
-        await AddonModGlossary.logView(glossary.id, viewMode, glossary.name);
+        try {
+            await AddonModGlossary.logView(glossary.id, viewMode, glossary.name);
+
+            CoreCourse.checkModuleCompletion(this.page.courseId, this.page.module.completiondata);
+        } catch {
+            // Ignore errors.
+        }
+    }
+
+    /**
+     * Check whether there is any entry in the items.
+     *
+     * @return Whether there is an entry.
+     */
+    get hasEntries(): boolean {
+        return this.getSource().onlineEntries.length > 0 || this.getSource().offlineEntries.length > 0;
     }
 
 }

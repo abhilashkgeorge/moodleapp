@@ -13,13 +13,14 @@
 // limitations under the License.
 
 import { Component, Input, OnInit, OnDestroy, ElementRef, ChangeDetectorRef } from '@angular/core';
-import { Subject } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { auditTime } from 'rxjs/operators';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { Translate } from '@singletons';
 import { CoreContextMenuItemComponent } from './context-menu-item';
 import { CoreContextMenuPopoverComponent } from './context-menu-popover';
+import { CoreComponentsRegistry } from '@singletons/components-registry';
 
 /**
  * This component adds a button (usually in the navigation bar) that displays a context menu popover.
@@ -42,11 +43,12 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
     protected itemsChangedStream: Subject<void>; // Stream to update the hideMenu boolean when items change.
     protected parentContextMenu?: CoreContextMenuComponent;
     protected expanded = false;
+    protected itemsSubscription: Subscription;
 
     constructor(elementRef: ElementRef, changeDetector: ChangeDetectorRef) {
         // Create the stream and subscribe to it. We ignore successive changes during 250ms.
         this.itemsChangedStream = new Subject<void>();
-        this.itemsChangedStream.pipe(auditTime(250)).subscribe(() => {
+        this.itemsSubscription = this.itemsChangedStream.pipe(auditTime(250)).subscribe(() => {
             // Hide the menu if all items are hidden.
             this.hideMenu = !this.items.some((item) => !item.hidden);
 
@@ -59,11 +61,11 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
         // Calculate the unique ID.
         this.uniqueId = 'core-context-menu-' + CoreUtils.getUniqueId('CoreContextMenuComponent');
 
-        CoreDomUtils.storeInstanceByElement(elementRef.nativeElement, this);
+        CoreComponentsRegistry.register(elementRef.nativeElement, this);
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     ngOnInit(): void {
         this.icon = this.icon || 'ellipsis-vertical';
@@ -197,10 +199,11 @@ export class CoreContextMenuComponent implements OnInit, OnDestroy {
     }
 
     /**
-     * Component destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.removeMergedItems();
+        this.itemsSubscription.unsubscribe();
     }
 
 }

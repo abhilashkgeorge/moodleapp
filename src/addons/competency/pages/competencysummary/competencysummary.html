@@ -10,7 +10,7 @@
         </ion-title>
     </ion-toolbar>
 </ion-header>
-<ion-content>
+<ion-content class="limited-width">
     <ion-refresher slot="fixed" [disabled]="!competencyLoaded" (ionRefresh)="refreshCompetency($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>

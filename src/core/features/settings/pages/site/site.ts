@@ -15,17 +15,20 @@
 import { AfterViewInit, Component, OnDestroy, ViewChild } from '@angular/core';
 import { IonRefresher } from '@ionic/angular';
 
-import { CoreSettingsHandlerToDisplay } from '../../services/settings-delegate';
+import { CoreSettingsHandlerToDisplay, CoreSettingsPageHandlerToDisplay } from '../../services/settings-delegate';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
-import { CoreDomUtils } from '@services/utils/dom';
-import { CoreSettingsHelper, CoreSiteSpaceUsage } from '../../services/settings-helper';
-import { CoreApp } from '@services/app';
-import { Translate } from '@singletons';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSplitViewComponent } from '@components/split-view/split-view';
 import { CoreListItemsManager } from '@classes/items-management/list-items-manager';
 import { CoreRoutedItemsManagerSourcesTracker } from '@classes/items-management/routed-items-manager-sources-tracker';
+import { CoreSettingsHelper } from '@features/settings/services/settings-helper';
+import { CoreDomUtils } from '@services/utils/dom';
+import { CoreNetwork } from '@services/network';
+import { Subscription } from 'rxjs';
+import { NgZone } from '@singletons';
+import { CoreConstants } from '@/core/constants';
+import { CoreConfig } from '@services/config';
 import { CoreSettingsHandlersSource } from '@features/settings/classes/settings-handlers-source';
 
 /**
@@ -39,20 +42,22 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
 
     @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
-    handlers: CoreListItemsManager<CoreSettingsHandlerToDisplay>;
+    handlers: CoreListItemsManager<CoreSettingsPageHandlerToDisplay, CoreSettingsHandlersSource>;
 
-    isIOS: boolean;
-    siteId: string;
-    spaceUsage: CoreSiteSpaceUsage = {
-        cacheEntries: 0,
-        spaceUsage: 0,
-    };
+    dataSaver = false;
+    limitedConnection = false;
+    isOnline = true;
 
+    protected siteId: string;
     protected sitesObserver: CoreEventObserver;
+    protected networkObserver: Subscription;
     protected isDestroyed = false;
 
+    get handlerItems(): CoreSettingsHandlerToDisplay[] {
+        return this.handlers.getSource().handlers;
+    }
+
     constructor() {
-        this.isIOS = CoreApp.isIOS();
         this.siteId = CoreSites.getCurrentSiteId();
 
         const source = CoreRoutedItemsManagerSourcesTracker.getOrCreateSource(CoreSettingsHandlersSource, []);
@@ -62,12 +67,25 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
         this.sitesObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
             this.refreshData();
         }, this.siteId);
+
+        this.isOnline = CoreNetwork.isOnline();
+        this.limitedConnection = this.isOnline && CoreNetwork.isNetworkAccessLimited();
+
+        this.networkObserver = CoreNetwork.onChange().subscribe(() => {
+            // Execute the callback in the Angular zone, so change detection doesn't stop working.
+            NgZone.run(() => {
+                this.isOnline = CoreNetwork.isOnline();
+                this.limitedConnection = this.isOnline && CoreNetwork.isNetworkAccessLimited();
+            });
+        });
     }
 
     /**
-     * View loaded.
+     * @inheritdoc
      */
     async ngAfterViewInit(): Promise<void> {
+        this.dataSaver = await CoreConfig.get(CoreConstants.SETTINGS_SYNC_ONLY_ON_WIFI, true);
+
         const pageToOpen = CoreNavigator.getRouteParam('page');
 
         try {
@@ -90,8 +108,6 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
      */
     protected async fetchData(): Promise<void> {
         await this.handlers.load();
-
-        this.spaceUsage = await CoreSettingsHelper.getSiteSpaceUsage(this.siteId);
     }
 
     /**
@@ -105,7 +121,7 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
             if (this.isDestroyed) {
                 return;
             }
-            CoreDomUtils.showErrorModalDefault(error, 'core.settings.errorsyncsite', true);
+            CoreDomUtils.showErrorModalDefault(error, 'core.settings.sitesyncfailed', true);
         }
 
     }
@@ -132,46 +148,13 @@ export class CoreSitePreferencesPage implements AfterViewInit, OnDestroy {
     }
 
     /**
-     * Deletes files of a site and the tables that can be cleared.
-     *
-     * @param siteData Site object with space usage.
-     */
-    async deleteSiteStorage(): Promise<void> {
-        try {
-            const siteName = CoreSites.getRequiredCurrentSite().getSiteName();
-
-            this.spaceUsage = await CoreSettingsHelper.deleteSiteStorage(siteName, this.siteId);
-        } catch {
-            // Ignore cancelled confirmation modal.
-        }
-    }
-
-    /**
-     * Show information about space usage actions.
-     */
-    showSpaceInfo(): void {
-        CoreDomUtils.showAlert(
-            Translate.instant('core.help'),
-            Translate.instant('core.settings.spaceusagehelp'),
-        );
-    }
-
-    /**
-     * Show information about sync actions.
-     */
-    showSyncInfo(): void {
-        CoreDomUtils.showAlert(
-            Translate.instant('core.help'),
-            Translate.instant('core.settings.synchronizenowhelp'),
-        );
-    }
-
-    /**
-     * Page destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.isDestroyed = true;
-        this.sitesObserver?.off();
+        this.sitesObserver.off();
+        this.networkObserver.unsubscribe();
+        this.handlers.destroy();
     }
 
 }

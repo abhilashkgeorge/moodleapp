@@ -16,28 +16,29 @@ import { Injectable } from '@angular/core';
 import { HttpResponse, HttpParams } from '@angular/common/http';
 
 import { FileEntry } from '@ionic-native/file/ngx';
-import { FileUploadOptions } from '@ionic-native/file-transfer/ngx';
+import { FileUploadOptions, FileUploadResult } from '@ionic-native/file-transfer/ngx';
 import { Md5 } from 'ts-md5/dist/md5';
 import { Observable } from 'rxjs';
 import { timeout } from 'rxjs/operators';
 
 import { CoreNativeToAngularHttpResponse } from '@classes/native-to-angular-http';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFile, CoreFileFormat } from '@services/file';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
-import { CoreTextUtils } from '@services/utils/text';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
+import { CoreTextErrorObject, CoreTextUtils } from '@services/utils/text';
 import { CoreConstants } from '@/core/constants';
 import { CoreError } from '@classes/errors/error';
 import { CoreInterceptor } from '@classes/interceptor';
 import { makeSingleton, Translate, FileTransfer, Http, NativeHttp } from '@singletons';
-import { CoreArray } from '@singletons/array';
 import { CoreLogger } from '@singletons/logger';
 import { CoreWSError } from '@classes/errors/wserror';
 import { CoreAjaxError } from '@classes/errors/ajaxerror';
 import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreSite } from '@classes/site';
+import { CoreHttpError } from '@classes/errors/httperror';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
 
 /**
  * This service allows performing WS calls and download/upload files.
@@ -76,12 +77,12 @@ export class CoreWSProvider {
             siteUrl,
             data,
             preSets,
-            deferred: CoreUtils.promiseDefer<T>(),
+            deferred: new CorePromisedValue<T>(),
         };
 
         this.retryCalls.push(call);
 
-        return call.deferred.promise;
+        return call.deferred;
     }
 
     /**
@@ -95,7 +96,7 @@ export class CoreWSProvider {
     call<T = unknown>(method: string, data: Record<string, unknown>, preSets: CoreWSPreSets): Promise<T> {
         if (!preSets) {
             throw new CoreError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -253,7 +254,7 @@ export class CoreWSProvider {
     ): Promise<CoreWSDownloadedFileEntry> {
         this.logger.debug('Downloading file', url, path, addExtension);
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -269,7 +270,11 @@ export class CoreWSProvider {
             onProgress && transfer.onProgress(onProgress);
 
             // Download the file in the tmp file.
-            await transfer.download(url, fileEntry.toURL(), true);
+            await transfer.download(url, fileEntry.toURL(), true, {
+                headers: {
+                    'User-Agent': navigator.userAgent, // eslint-disable-line @typescript-eslint/naming-convention
+                },
+            });
 
             let extension = '';
 
@@ -277,7 +282,7 @@ export class CoreWSProvider {
                 extension = CoreMimetypeUtils.getFileExtension(path) || '';
 
                 // Google Drive extensions will be considered invalid since Moodle usually converts them.
-                if (!extension || CoreArray.contains(['gdoc', 'gsheet', 'gslides', 'gdraw', 'php'], extension)) {
+                if (!extension || ['gdoc', 'gsheet', 'gslides', 'gdraw', 'php'].includes(extension)) {
                     // Not valid, get the file's mimetype.
                     const mimetype = await this.getRemoteFileMimeType(url);
 
@@ -383,7 +388,7 @@ export class CoreWSProvider {
      * @return Timeout in ms.
      */
     getRequestTimeout(): number {
-        return CoreApp.isNetworkAccessLimited() ? CoreConstants.WS_TIMEOUT : CoreConstants.WS_TIMEOUT_WIFI;
+        return CoreNetwork.isNetworkAccessLimited() ? CoreConstants.WS_TIMEOUT : CoreConstants.WS_TIMEOUT_WIFI;
     }
 
     /**
@@ -416,7 +421,7 @@ export class CoreWSProvider {
 
         if (preSets.siteUrl === undefined) {
             throw new CoreAjaxError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreAjaxError(Translate.instant('core.networkerrormsg'));
         }
 
@@ -693,6 +698,8 @@ export class CoreWSProvider {
                 return retryPromise;
             } else if (error.status === -2) {
                 throw new CoreError(this.getCertificateErrorMessage(error.error));
+            } else if (error.status > 0) {
+                throw this.createHttpError(error, error.status);
             }
 
             throw new CoreError(Translate.instant('core.serverconnection'));
@@ -782,7 +789,7 @@ export class CoreWSProvider {
     syncCall<T = unknown>(method: string, data: any, preSets: CoreWSPreSets): T {
         if (!preSets) {
             throw new CoreError(Translate.instant('core.unexpectederror'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -866,7 +873,7 @@ export class CoreWSProvider {
             throw new CoreError('Invalid options passed to upload file.');
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -882,54 +889,74 @@ export class CoreWSProvider {
             itemid: options.itemId || 0,
         };
         options.chunkedMode = false;
-        options.headers = {};
+        options.headers = {
+            'User-Agent': navigator.userAgent, // eslint-disable-line @typescript-eslint/naming-convention
+        };
         options['Connection'] = 'close';
 
+        let success: FileUploadResult;
+
         try {
-            const success = await transfer.upload(filePath, uploadUrl, options, true);
-
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const data = CoreTextUtils.parseJSON<any>(
-                success.response,
-                null,
-                this.logger.error.bind(this.logger, 'Error parsing response from upload', success.response),
-            );
-
-            if (data === null) {
-                throw new CoreError(Translate.instant('core.errorinvalidresponse'));
-            }
-
-            if (!data) {
-                throw new CoreError(Translate.instant('core.serverconnection'));
-            } else if (typeof data != 'object') {
-                this.logger.warn('Upload file: Response of type "' + typeof data + '" received, expecting "object"');
-
-                throw new CoreError(Translate.instant('core.errorinvalidresponse'));
-            }
-
-            if (data.exception !== undefined) {
-                throw new CoreWSError(data);
-            } else if (data.error !== undefined) {
-                throw new CoreWSError({
-                    errorcode: data.errortype,
-                    message: data.error,
-                });
-            } else if (data[0] && data[0].error !== undefined) {
-                throw new CoreWSError({
-                    errorcode: data[0].errortype,
-                    message: data[0].error,
-                });
-            }
-
-            // We uploaded only 1 file, so we only return the first file returned.
-            this.logger.debug('Successfully uploaded file', filePath);
-
-            return data[0];
+            success = await transfer.upload(filePath, uploadUrl, options, true);
         } catch (error) {
             this.logger.error('Error while uploading file', filePath, error);
 
+            throw this.createHttpError(error, error.http_status ?? 0);
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = CoreTextUtils.parseJSON<any>(
+            success.response,
+            null,
+            error => this.logger.error('Error parsing response from upload', success.response, error),
+        );
+
+        if (data === null) {
             throw new CoreError(Translate.instant('core.errorinvalidresponse'));
         }
+
+        if (!data) {
+            throw new CoreError(Translate.instant('core.serverconnection'));
+        } else if (typeof data != 'object') {
+            this.logger.warn('Upload file: Response of type "' + typeof data + '" received, expecting "object"');
+
+            throw new CoreError(Translate.instant('core.errorinvalidresponse'));
+        }
+
+        if (data.exception !== undefined) {
+            throw new CoreWSError(data);
+        } else if (data.error !== undefined) {
+            throw new CoreWSError({
+                errorcode: data.errortype,
+                message: data.error,
+            });
+        } else if (data[0] && data[0].error !== undefined) {
+            throw new CoreWSError({
+                errorcode: data[0].errortype,
+                message: data[0].error,
+            });
+        }
+
+        // We uploaded only 1 file, so we only return the first file returned.
+        this.logger.debug('Successfully uploaded file', filePath);
+
+        return data[0];
+    }
+
+    /**
+     * Create a CoreHttpError based on a certain error.
+     *
+     * @param error Original error.
+     * @param status Status code (if any).
+     * @return CoreHttpError.
+     */
+    protected createHttpError(error: CoreTextErrorObject, status: number): CoreHttpError {
+        const message = CoreTextUtils.buildSeveralParagraphsMessage([
+            Translate.instant('core.cannotconnecttrouble'),
+            CoreTextUtils.getHTMLBodyContent(CoreTextUtils.getErrorMessageFromError(error) || ''),
+        ]);
+
+        return new CoreHttpError(message, status);
     }
 
     /**
@@ -968,7 +995,7 @@ export class CoreWSProvider {
         options.responseType = options.responseType || 'json';
         options.timeout = options.timeout === undefined ? this.getRequestTimeout() : options.timeout;
 
-        if (CoreApp.isMobile()) {
+        if (CorePlatform.isMobile()) {
             // Use the cordova plugin.
             if (url.indexOf('file://') === 0) {
                 // We cannot load local files using the http native plugin. Use file provider instead.
@@ -1337,7 +1364,7 @@ type RetryCall = {
     siteUrl: string;
     data: Record<string, unknown>;
     preSets: CoreWSPreSets;
-    deferred: PromiseDefer<unknown>;
+    deferred: CorePromisedValue;
 };
 
 /**

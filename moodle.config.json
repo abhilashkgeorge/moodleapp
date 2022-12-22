@@ -11,6 +11,7 @@
     "languages": {
         "af": "Afrikaans",
         "ar": "عربي",
+        "az": "Azərbaycanca",
         "bg": "Български",
         "ca": "Català",
         "cs": "Čeština",
@@ -65,8 +66,8 @@
     },
     "wsservice": "moodle_mobile_app",
     "zoomlevels": {
-        "normal": 100,
-        "low": 110,
+        "none": 100,
+        "medium": 110,
         "high": 120
     },
     "customurlscheme": "goscore",
@@ -89,5 +90,11 @@
         "ios": "id633359593"
     },
     "wsrequestqueuelimit": 10,
-    "wsrequestqueuedelay": 100
+    "wsrequestqueuedelay": 100,
+    "calendarreminderdefaultvalue": 3600,
+    "toastDurations": {
+        "short": 2000,
+        "long": 3500,
+        "sticky": 0
+    }
 }

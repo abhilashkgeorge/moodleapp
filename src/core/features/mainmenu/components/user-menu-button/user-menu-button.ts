@@ -12,11 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit } from '@angular/core';
+import { Component, Input, OnInit } from '@angular/core';
 import { CoreSiteInfo } from '@classes/site';
+import { CoreUserTourDirectiveOptions } from '@directives/user-tour';
+import { CoreUserToursAlignment, CoreUserToursSide } from '@features/usertours/services/user-tours';
 import { IonRouterOutlet } from '@ionic/angular';
+import { CoreScreen } from '@services/screen';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
+import { CoreMainMenuUserMenuTourComponent } from '../user-menu-tour/user-menu-tour';
 import { CoreMainMenuUserMenuComponent } from '../user-menu/user-menu';
 
 /**
@@ -31,8 +35,15 @@ import { CoreMainMenuUserMenuComponent } from '../user-menu/user-menu';
 })
 export class CoreMainMenuUserButtonComponent implements OnInit {
 
+    @Input() alwaysShow = false;
     siteInfo?: CoreSiteInfo;
     isMainScreen = false;
+    userTour: CoreUserTourDirectiveOptions = {
+        id: 'user-menu',
+        component: CoreMainMenuUserMenuTourComponent,
+        alignment: CoreUserToursAlignment.Start,
+        side: CoreScreen.isMobile ? CoreUserToursSide.Start : CoreUserToursSide.End,
+    };
 
     constructor(protected routerOutlet: IonRouterOutlet) {
         const currentSite = CoreSites.getRequiredCurrentSite();
@@ -58,7 +69,6 @@ export class CoreMainMenuUserButtonComponent implements OnInit {
 
         CoreDomUtils.openSideModal<void>({
             component: CoreMainMenuUserMenuComponent,
-            cssClass: 'core-modal-lateral-sm',
         });
     }
 

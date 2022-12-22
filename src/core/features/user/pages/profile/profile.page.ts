@@ -21,9 +21,14 @@ import { CoreSite } from '@classes/site';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
-import { CoreUser, CoreUserProfile, CoreUserProvider } from '@features/user/services/user';
+import { CoreUser, CoreUserProfile, USER_PROFILE_REFRESHED } from '@features/user/services/user';
 import { CoreUserHelper } from '@features/user/services/user-helper';
-import { CoreUserDelegate, CoreUserDelegateService, CoreUserProfileHandlerData } from '@features/user/services/user-delegate';
+import {
+    CoreUserDelegate,
+    CoreUserDelegateContext,
+    CoreUserDelegateService,
+    CoreUserProfileHandlerData,
+} from '@features/user/services/user-delegate';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreNavigator } from '@services/navigator';
 import { CoreCourses } from '@features/courses/services/courses';
@@ -43,11 +48,13 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
     protected site!: CoreSite;
     protected obsProfileRefreshed: CoreEventObserver;
     protected subscription?: Subscription;
+    protected fetchSuccess = false;
 
     userLoaded = false;
     isLoadingHandlers = false;
     user?: CoreUserProfile;
     isDeleted = false;
+    isSuspended = false;
     isEnrolled = true;
     rolesFormatted?: string;
     actionHandlers: CoreUserProfileHandlerData[] = [];
@@ -57,7 +64,7 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
     users?: CoreUserSwipeItemsManager;
 
     constructor(private route: ActivatedRoute) {
-        this.obsProfileRefreshed = CoreEvents.on(CoreUserProvider.PROFILE_REFRESHED, (data) => {
+        this.obsProfileRefreshed = CoreEvents.on(USER_PROFILE_REFRESHED, (data) => {
             if (!this.user || !data.user) {
                 return;
             }
@@ -100,17 +107,6 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
 
         try {
             await this.fetchUser();
-
-            if (!this.user) {
-                return;
-            }
-
-            try {
-                await CoreUser.logView(this.userId, this.courseId, this.user.fullname);
-            } catch (error) {
-                this.isDeleted = error?.errorcode === 'userdeleted';
-                this.isEnrolled = error?.errorcode !== 'notenrolledprofile';
-            }
         } finally {
             this.userLoaded = true;
         }
@@ -131,7 +127,9 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
             // If there's already a subscription, unsubscribe because we'll get a new one.
             this.subscription?.unsubscribe();
 
-            this.subscription = CoreUserDelegate.getProfileHandlersFor(user, this.courseId).subscribe((handlers) => {
+            const context = this.courseId ? CoreUserDelegateContext.COURSE : CoreUserDelegateContext.SITE;
+
+            this.subscription = CoreUserDelegate.getProfileHandlersFor(user, context, this.courseId).subscribe((handlers) => {
                 this.actionHandlers = [];
                 this.newPageHandlers = [];
                 this.communicationHandlers = [];
@@ -150,8 +148,20 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
                     }
                 });
 
-                this.isLoadingHandlers = !CoreUserDelegate.areHandlersLoaded(user.id);
+                this.isLoadingHandlers = !CoreUserDelegate.areHandlersLoaded(user.id, context, this.courseId);
             });
+
+            if (!this.fetchSuccess) {
+                this.fetchSuccess = true;
+
+                try {
+                    await CoreUser.logView(this.userId, this.courseId, this.user.fullname);
+                } catch (error) {
+                    this.isDeleted = error?.errorcode === 'userdeleted' || error?.errorcode === 'wsaccessuserdeleted';
+                    this.isSuspended = error?.errorcode === 'wsaccessusersuspended';
+                    this.isEnrolled = error?.errorcode !== 'notenrolledprofile';
+                }
+            }
 
         } catch (error) {
             // Error is null for deleted users, do not show the modal.
@@ -177,7 +187,7 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
         event?.complete();
 
         if (this.user) {
-            CoreEvents.trigger(CoreUserProvider.PROFILE_REFRESHED, {
+            CoreEvents.trigger(USER_PROFILE_REFRESHED, {
                 courseId: this.courseId,
                 userId: this.userId,
                 user: this.user,
@@ -208,7 +218,8 @@ export class CoreUserProfilePage implements OnInit, OnDestroy {
             return;
         }
 
-        handler.action(event, this.user, this.courseId);
+        const context = this.courseId ? CoreUserDelegateContext.COURSE : CoreUserDelegateContext.SITE;
+        handler.action(event, this.user, context, this.courseId);
     }
 
     /**

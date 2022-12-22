@@ -18,7 +18,7 @@ import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreCourseActivitySyncBaseProvider } from '@features/course/classes/activity-sync';
 import { CoreCourse, CoreCourseAnyModuleData } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreSync } from '@services/sync';
 import { CoreUtils } from '@services/utils/utils';
@@ -51,7 +51,7 @@ export class AddonModFeedbackSyncProvider extends CoreCourseActivitySyncBaseProv
         courseId: number,
         regex?: RegExp,
         siteId?: string,
-    ): Promise<void> {
+    ): Promise<boolean> {
         regex = regex || /^.*files$|^timers/;
 
         return super.prefetchAfterUpdate(prefetchHandler, module, courseId, regex, siteId);
@@ -65,7 +65,7 @@ export class AddonModFeedbackSyncProvider extends CoreCourseActivitySyncBaseProv
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllFeedbacks(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('all feedbacks', this.syncAllFeedbacksFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('all feedbacks', (siteId) => this.syncAllFeedbacksFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -174,7 +174,7 @@ export class AddonModFeedbackSyncProvider extends CoreCourseActivitySyncBaseProv
             return result;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }
@@ -213,7 +213,7 @@ export class AddonModFeedbackSyncProvider extends CoreCourseActivitySyncBaseProv
         responses.sort((a, b) => a.page - b.page);
 
         const orderedData = responses.map((data) => ({
-            function: this.processPage.bind(this, feedback, data, siteId, timemodified, result),
+            function: () => this.processPage(feedback, data, siteId, timemodified, result),
             blocking: true,
         }));
 

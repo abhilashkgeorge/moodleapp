@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Input, OnInit } from '@angular/core';
+import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { CoreCourse } from '@features/course/services/course';
-import { CoreCourseModuleData } from '@features/course/services/course-helper';
+import { CoreCourseModuleCompletionData, CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleDelegate } from '@features/course/services/module-delegate';
 import { CoreSites } from '@services/sites';
 
@@ -44,7 +44,12 @@ export class CoreCourseModuleInfoComponent implements OnInit {
     @Input() description?: string | false; // The description to display. If false, no description will be shown.
     @Input() expandDescription = false; // If the description should be expanded by default.
 
+    @Input() showAvailabilityInfo = false; // If show availability info on the box.
+
     @Input() hasDataToSync = false; // If the activity has any data to be synced.
+
+    @Input() showManualCompletion = true; // Whether to show manual completion, true by default.
+    @Output() completionChanged = new EventEmitter<CoreCourseModuleCompletionData>(); // Notify when completion changes.
 
     modicon = '';
     showCompletion = false; // Whether to show completion.

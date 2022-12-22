@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { CoreConstants } from '@/core/constants';
 import { Component, Input, OnInit, Optional } from '@angular/core';
 import { Params } from '@angular/router';
 import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/main-resource-component';
@@ -55,25 +54,17 @@ export class AddonModFolderIndexComponent extends CoreCourseModuleMainResourceCo
         if (this.subfolder) {
             this.description = this.folderInstance ? this.folderInstance.intro : this.module.description;
             this.contents = this.subfolder;
+            this.sortFilesAndFolders();
 
-            this.loaded = true;
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
+            this.showLoading = false;
 
             return;
         }
 
         try {
             await this.loadContent();
-
-            try {
-                await AddonModFolder.logView(this.module.instance, this.module.name);
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            } catch {
-                // Ignore errors.
-            }
         } finally {
-            this.loaded = true;
-            this.refreshIcon = CoreConstants.ICON_REFRESH;
+            this.showLoading = false;
         }
     }
 
@@ -87,24 +78,48 @@ export class AddonModFolderIndexComponent extends CoreCourseModuleMainResourceCo
     }
 
     /**
-     * Download folder contents.
-     *
-     * @param refresh Whether we're refreshing data.
-     * @return Promise resolved when done.
+     * @inheritdoc
      */
     protected async fetchContent(refresh = false): Promise<void> {
-        try {
-            this.folderInstance = await AddonModFolder.getFolder(this.courseId, this.module.id);
+        this.folderInstance = await AddonModFolder.getFolder(this.courseId, this.module.id);
 
-            const contents = await CoreCourse.getModuleContents(this.module, undefined, undefined, false, refresh);
+        const contents = await CoreCourse.getModuleContents(this.module, undefined, undefined, false, refresh);
 
-            this.dataRetrieved.emit(this.folderInstance || this.module);
+        this.dataRetrieved.emit(this.folderInstance || this.module);
 
-            this.description = this.folderInstance ? this.folderInstance.intro : this.module.description;
-            this.contents = AddonModFolderHelper.formatContents(contents);
-        } finally {
-            this.fillContextMenu(refresh);
+        this.description = this.folderInstance ? this.folderInstance.intro : this.module.description;
+        this.contents = AddonModFolderHelper.formatContents(contents);
+        this.sortFilesAndFolders();
+    }
+
+    /**
+     * Sort files and folders alphabetically.
+     */
+    protected sortFilesAndFolders(): void {
+        if (!this.contents) {
+            return;
         }
+
+        this.contents.folders.sort((a, b) => {
+            const compareA = a.filename.toLowerCase();
+            const compareB = b.filename.toLowerCase();
+
+            return compareA.localeCompare(compareB);
+        });
+
+        this.contents.files.sort((a, b) => {
+            const compareA = a.filename.toLowerCase();
+            const compareB = b.filename.toLowerCase();
+
+            return compareA.localeCompare(compareB);
+        });
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async logActivity(): Promise<void> {
+        await AddonModFolder.logView(this.module.instance, this.module.name);
     }
 
     /**

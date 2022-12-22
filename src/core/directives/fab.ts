@@ -13,7 +13,8 @@
 // limitations under the License.
 
 import { Directive, ElementRef, OnDestroy, OnInit } from '@angular/core';
-import { CoreUtils } from '@services/utils/utils';
+import { CoreCancellablePromise } from '@classes/cancellable-promise';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Directive to move ion-fab components as direct children of the nearest ion-content.
@@ -30,36 +31,44 @@ export class CoreFabDirective implements OnInit, OnDestroy {
     protected element: HTMLElement;
     protected content?: HTMLIonContentElement | null;
     protected initialPaddingBottom = 0;
+    protected slotPromise?: CoreCancellablePromise<void>;
 
     constructor(el: ElementRef) {
         this.element = el.nativeElement;
-        this.element.setAttribute('slot', 'fixed');
     }
 
     /**
      * @inheritdoc
      */
-    async ngOnInit(retries = 3): Promise<void> {
+    async ngOnInit(): Promise<void> {
+        this.slotPromise = CoreDom.slotOnContent(this.element);
+        await this.slotPromise;
+
         this.content = this.element.closest('ion-content');
+
         if (!this.content) {
-            if(retries > 0) {
-                await CoreUtils.nextTicks(50);
-
-                this.ngOnInit(retries - 1);
-            }
-
             return;
-        }
-
-        const initialHeight = this.element.getBoundingClientRect().height || 56;
-
-        // Move element to the nearest ion-content if it's not the parent
-        if (this.element.parentElement?.nodeName != 'ION-CONTENT') {
-            this.content.appendChild(this.element);
         }
 
         // Add space at the bottom to let the user see the whole content.
         this.initialPaddingBottom = parseFloat(this.content.style.getPropertyValue('--padding-bottom') || '0');
+
+        await this.calculatePlace();
+
+        CoreDom.onElementSlot(this.element, () => {
+            this.calculatePlace();
+        });
+    }
+
+    /**
+     * Calculate the height of the footer.
+     */
+    protected async calculatePlace(): Promise<void> {
+        if (!this.content) {
+            return;
+        }
+
+        const initialHeight = this.element.getBoundingClientRect().height || 56;
         this.content.style.setProperty('--padding-bottom', this.initialPaddingBottom + initialHeight + 'px');
     }
 
@@ -67,9 +76,12 @@ export class CoreFabDirective implements OnInit, OnDestroy {
      * @inheritdoc
      */
     ngOnDestroy(): void {
+        this.element.remove();
+
         if (this.content) {
             this.content.style.setProperty('--padding-bottom', this.initialPaddingBottom + 'px');
         }
+        this.slotPromise?.cancel();
     }
 
 }

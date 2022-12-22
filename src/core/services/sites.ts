@@ -32,7 +32,7 @@ import {
     CoreSitePublicConfigResponse,
     CoreSiteInfoResponse,
 } from '@classes/site';
-import { SQLiteDB, SQLiteDBTableSchema } from '@classes/sqlitedb';
+import { SQLiteDB, SQLiteDBRecordValues, SQLiteDBTableSchema } from '@classes/sqlitedb';
 import { CoreError } from '@classes/errors/error';
 import { CoreSiteError } from '@classes/errors/siteerror';
 import { makeSingleton, Translate, Http } from '@singletons';
@@ -41,23 +41,29 @@ import {
     APP_SCHEMA,
     SCHEMA_VERSIONS_TABLE_SCHEMA,
     SITES_TABLE_NAME,
-    CURRENT_SITE_TABLE_NAME,
     SCHEMA_VERSIONS_TABLE_NAME,
     SiteDBEntry,
-    CurrentSiteDBEntry,
     SchemaVersionsDBEntry,
 } from '@services/database/sites';
 import { CoreArray } from '../singletons/array';
 import { CoreNetworkError } from '@classes/errors/network-error';
-import { CoreNavigationOptions } from './navigator';
+import { CoreRedirectPayload } from './navigator';
 import { CoreSitesFactory } from './sites-factory';
 import { CoreText } from '@singletons/text';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
-import { CoreErrorWithTitle } from '@classes/errors/errorwithtitle';
+import { CoreErrorWithOptions } from '@classes/errors/errorwithtitle';
 import { CoreAjaxError } from '@classes/errors/ajaxerror';
 import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
+import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CoreDatabaseConfiguration, CoreDatabaseTable } from '@classes/database/database-table';
+import { CoreDatabaseCachingStrategy, CoreDatabaseTableProxy } from '@classes/database/database-table-proxy';
+import { asyncInstance, AsyncInstance } from '../utils/async-instance';
+import { CoreConfig } from './config';
+import { CoreNetwork } from '@services/network';
 
 export const CORE_SITE_SCHEMAS = new InjectionToken<CoreSiteSchema[]>('CORE_SITE_SCHEMAS');
+export const CORE_SITE_CURRENT_SITE_ID_CONFIG = 'current_site_id';
 
 /*
  * Service to manage and interact with sites.
@@ -80,15 +86,13 @@ export class CoreSitesProvider {
     protected siteSchemasMigration: { [siteId: string]: Promise<void> } = {};
     protected siteSchemas: { [name: string]: CoreRegisteredSiteSchema } = {};
     protected pluginsSiteSchemas: { [name: string]: CoreRegisteredSiteSchema } = {};
+    protected siteTables: Record<string, Record<string, CorePromisedValue<CoreDatabaseTable>>> = {};
+    protected schemasTables: Record<string, AsyncInstance<CoreDatabaseTable<SchemaVersionsDBEntry, 'name'>>> = {};
+    protected sitesTable = asyncInstance<CoreDatabaseTable<SiteDBEntry>>();
 
-    // Variables for DB.
-    protected appDB: Promise<SQLiteDB>;
-    protected resolveAppDB!: (appDB: SQLiteDB) => void;
-
-    constructor(@Optional() @Inject(CORE_SITE_SCHEMAS) siteSchemas: CoreSiteSchema[][] = []) {
-        this.appDB = new Promise(resolve => this.resolveAppDB = resolve);
+    constructor(@Optional() @Inject(CORE_SITE_SCHEMAS) siteSchemas: CoreSiteSchema[][] | null) {
         this.logger = CoreLogger.getInstance('CoreSitesProvider');
-        this.siteSchemas = CoreArray.flatten(siteSchemas).reduce(
+        this.siteSchemas = CoreArray.flatten(siteSchemas ?? []).reduce(
             (siteSchemas, schema) => {
                 siteSchemas[schema.name] = schema;
 
@@ -96,6 +100,25 @@ export class CoreSitesProvider {
             },
             this.siteSchemas,
         );
+    }
+
+    /**
+     * Initialize.
+     */
+    initialize(): void {
+        CoreEvents.on(CoreEvents.SITE_DELETED, async ({ siteId }) => {
+            if (!siteId || !(siteId in this.siteTables)) {
+                return;
+            }
+
+            await Promise.all(
+                Object
+                    .values(this.siteTables[siteId])
+                    .map(promisedTable => promisedTable.then(table => table.destroy())),
+            );
+
+            delete this.siteTables[siteId];
+        });
     }
 
     /**
@@ -108,7 +131,61 @@ export class CoreSitesProvider {
             // Ignore errors.
         }
 
-        this.resolveAppDB(CoreApp.getDB());
+        const sitesTable = new CoreDatabaseTableProxy<SiteDBEntry>(
+            { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
+            CoreApp.getDB(),
+            SITES_TABLE_NAME,
+        );
+
+        await sitesTable.initialize();
+
+        this.sitesTable.setInstance(sitesTable);
+    }
+
+    /**
+     * Get site table.
+     *
+     * @param tableName Site table name.
+     * @param options Options to configure table initialization.
+     * @returns Site table.
+     */
+    async getSiteTable<
+        DBRecord extends SQLiteDBRecordValues,
+        PrimaryKeyColumn extends keyof DBRecord
+    >(
+        tableName: string,
+        options: Partial<{
+            siteId: string;
+            config: Partial<CoreDatabaseConfiguration>;
+            database: SQLiteDB;
+            primaryKeyColumns: PrimaryKeyColumn[];
+            onDestroy(): void;
+        }> = {},
+    ): Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn>> {
+        const siteId = options.siteId ?? this.getCurrentSiteId();
+
+        if (!(siteId in this.siteTables)) {
+            this.siteTables[siteId] = {};
+        }
+
+        if (!(tableName in this.siteTables[siteId])) {
+            const promisedTable = this.siteTables[siteId][tableName] = new CorePromisedValue();
+            const database = options.database ?? await this.getSiteDb(siteId);
+            const table = new CoreDatabaseTableProxy<DBRecord, PrimaryKeyColumn>(
+                options.config ?? {},
+                database,
+                tableName,
+                options.primaryKeyColumns,
+            );
+
+            options.onDestroy && table.addListener({ onDestroy: options.onDestroy });
+
+            await table.initialize();
+
+            promisedTable.resolve(table as unknown as CoreDatabaseTable);
+        }
+
+        return this.siteTables[siteId][tableName] as unknown as Promise<CoreDatabaseTable<DBRecord, PrimaryKeyColumn>>;
     }
 
     /**
@@ -140,7 +217,7 @@ export class CoreSitesProvider {
 
         if (!CoreUrlUtils.isHttpURL(siteUrl)) {
             throw new CoreError(Translate.instant('core.login.invalidsite'));
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -262,12 +339,15 @@ export class CoreSitesProvider {
         }
 
         // Service supported but an error happened. Return error.
+        let critical = true;
+
         if (error.errorcode === 'codingerror') {
             // This could be caused by a redirect. Check if it's the case.
             const redirect = await CoreUtils.checkRedirect(siteUrl);
 
             if (redirect) {
                 error.message = Translate.instant('core.login.sitehasredirect');
+                critical = false; // Keep checking fallback URLs.
             } else {
                 // We can't be sure if there is a redirect or not. Display cannot connect error.
                 error.message = Translate.instant('core.cannotconnecttrouble');
@@ -275,12 +355,14 @@ export class CoreSitesProvider {
         } else if (error.errorcode === 'invalidrecord') {
             // WebService not found, site not supported.
             error.message = Translate.instant('core.login.invalidmoodleversion', { $a: CoreSite.MINIMUM_MOODLE_VERSION });
+        } else if (error.errorcode === 'redirecterrordetected') {
+            critical = false; // Keep checking fallback URLs.
         }
 
         return new CoreSiteError({
             message: error.message,
             errorcode: error.errorcode,
-            critical: true,
+            critical,
         });
     }
 
@@ -348,7 +430,7 @@ export class CoreSitesProvider {
         service?: string,
         retry?: boolean,
     ): Promise<CoreSiteUserTokenResponse> {
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             throw new CoreNetworkError();
         }
 
@@ -476,14 +558,14 @@ export class CoreSitesProvider {
             }
 
             // Add site to sites list.
-            this.addSite(siteId, siteUrl, token, info, privateToken, config, oauthId);
+            await this.addSite(siteId, siteUrl, token, info, privateToken, config, oauthId);
             this.sites[siteId] = candidateSite;
 
             if (login) {
                 // Turn candidate site into current site.
                 this.currentSite = candidateSite;
                 // Store session.
-                this.login(siteId);
+                await this.login(siteId);
             } else if (this.currentSite && this.currentSite.getId() == siteId) {
                 // Current site has just been updated, trigger the event.
                 CoreEvents.trigger(CoreEvents.SITE_UPDATED, info, siteId);
@@ -676,8 +758,7 @@ export class CoreSitesProvider {
         config?: CoreSiteConfig,
         oauthId?: number,
     ): Promise<void> {
-        const db = await this.appDB;
-        const entry: SiteDBEntry = {
+        await this.sitesTable.insert({
             id,
             siteUrl,
             token,
@@ -686,9 +767,7 @@ export class CoreSitesProvider {
             config: config ? JSON.stringify(config) : undefined,
             loggedOut: 0,
             oauthId,
-        };
-
-        await db.insertRecord(SITES_TABLE_NAME, entry);
+        });
     }
 
     /**
@@ -781,28 +860,24 @@ export class CoreSitesProvider {
      * Login a user to a site from the list of sites.
      *
      * @param siteId ID of the site to load.
-     * @param pageName Name of the page to go once authenticated if logged out. If not defined, site initial page.
-     * @param pageOptions Options of the navigation to pageName.
+     * @param redirectData Data of the path/url to open once authenticated if logged out. If not defined, site initial page.
      * @return Promise resolved with true if site is loaded, resolved with false if cannot login.
      */
-    async loadSite(siteId: string, pageName?: string, pageOptions?: CoreNavigationOptions): Promise<boolean> {
+    async loadSite(siteId: string, redirectData?: CoreRedirectPayload): Promise<boolean> {
         this.logger.debug(`Load site ${siteId}`);
 
         const site = await this.getSite(siteId);
 
         const siteUrlAllowed = await CoreLoginHelper.isSiteUrlAllowed(site.getURL(), false);
         if (!siteUrlAllowed) {
-            throw new CoreErrorWithTitle(Translate.instant('core.login.sitenotallowed'));
+            throw new CoreErrorWithOptions(Translate.instant('core.login.sitenotallowed'));
         }
 
         this.currentSite = site;
 
         if (site.isLoggedOut()) {
             // Logged out, trigger session expired event and stop.
-            CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {
-                pageName,
-                options: pageOptions,
-            }, site.getId());
+            CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, redirectData || {}, site.getId());
 
             return false;
         }
@@ -823,7 +898,9 @@ export class CoreSitesProvider {
      */
     protected async getPublicConfigAndCheckApplication(site: CoreSite): Promise<void> {
         try {
-            const config = await site.getPublicConfig();
+            const config = await site.getPublicConfig({
+                readingStrategy: CoreSitesReadingStrategy.ONLY_NETWORK,
+            });
 
             await this.checkApplication(config);
         } catch {
@@ -919,9 +996,7 @@ export class CoreSitesProvider {
         delete this.sites[siteId];
 
         try {
-            const db = await this.appDB;
-
-            await db.deleteRecords(SITES_TABLE_NAME, { id: siteId });
+            await this.sitesTable.deleteByPrimaryKey({ id: siteId });
         } catch (err) {
             // DB remove shouldn't fail, but we'll go ahead even if it does.
         }
@@ -938,10 +1013,9 @@ export class CoreSitesProvider {
      * @return Promise resolved with true if there are sites and false if there aren't.
      */
     async hasSites(): Promise<boolean> {
-        const db = await this.appDB;
-        const count = await db.countRecords(SITES_TABLE_NAME);
+        const isEmpty = await this.sitesTable.isEmpty();
 
-        return count > 0;
+        return !isEmpty;
     }
 
     /**
@@ -963,14 +1037,31 @@ export class CoreSitesProvider {
             return this.sites[siteId];
         } else {
             // Retrieve and create the site.
-            const db = await this.appDB;
             try {
-                const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
+                const data = await this.sitesTable.getOneByPrimaryKey({ id: siteId });
 
-                return this.makeSiteFromSiteListEntry(data);
+                return this.addSiteFromSiteListEntry(data);
             } catch {
                 throw new CoreError('SiteId not found');
             }
+        }
+    }
+
+    /**
+     * Get a site directly from the database, without using any optimizations.
+     *
+     * @param siteId Site id.
+     * @return Site.
+     */
+    async getSiteFromDB(siteId: string): Promise<CoreSite> {
+        const db = CoreApp.getDB();
+
+        try {
+            const record = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { id: siteId });
+
+            return this.makeSiteFromSiteListEntry(record);
+        } catch {
+            throw new CoreError('SiteId not found');
         }
     }
 
@@ -981,14 +1072,13 @@ export class CoreSitesProvider {
      * @return Promise resolved with the site.
      */
     async getSiteByUrl(siteUrl: string): Promise<CoreSite> {
-        const db = await this.appDB;
-        const data = await db.getRecord<SiteDBEntry>(SITES_TABLE_NAME, { siteUrl });
+        const data = await this.sitesTable.getOne({ siteUrl });
 
         if (this.sites[data.id] !== undefined) {
             return this.sites[data.id];
         }
 
-        return this.makeSiteFromSiteListEntry(data);
+        return this.addSiteFromSiteListEntry(data);
     }
 
     /**
@@ -997,8 +1087,25 @@ export class CoreSitesProvider {
      * @param entry Site list entry.
      * @return Promised resolved with the created site.
      */
-    makeSiteFromSiteListEntry(entry: SiteDBEntry): Promise<CoreSite> {
+    addSiteFromSiteListEntry(entry: SiteDBEntry): Promise<CoreSite> {
         // Parse info and config.
+        const site = this.makeSiteFromSiteListEntry(entry);
+
+        return this.migrateSiteSchemas(site).then(() => {
+            // Set site after migrating schemas, or a call to getSite could get the site while tables are being created.
+            this.sites[entry.id] = site;
+
+            return site;
+        });
+    }
+
+    /**
+     * Make a site instance from a database entry.
+     *
+     * @param entry Site database entry.
+     * @return Site.
+     */
+    makeSiteFromSiteListEntry(entry: SiteDBEntry): CoreSite {
         const info = entry.info ? <CoreSiteInfo> CoreTextUtils.parseJSON(entry.info) : undefined;
         const config = entry.config ? <CoreSiteConfig> CoreTextUtils.parseJSON(entry.config) : undefined;
 
@@ -1013,12 +1120,7 @@ export class CoreSitesProvider {
         );
         site.setOAuthId(entry.oauthId || undefined);
 
-        return this.migrateSiteSchemas(site).then(() => {
-            // Set site after migrating schemas, or a call to getSite could get the site while tables are being created.
-            this.sites[entry.id] = site;
-
-            return site;
-        });
+        return site;
     }
 
     /**
@@ -1068,8 +1170,7 @@ export class CoreSitesProvider {
      * @return Promise resolved when the sites are retrieved.
      */
     async getSites(ids?: string[]): Promise<CoreSiteBasicInfo[]> {
-        const db = await this.appDB;
-        const sites = await db.getAllRecords<SiteDBEntry>(SITES_TABLE_NAME);
+        const sites = await this.sitesTable.getMany();
 
         const formattedSites: CoreSiteBasicInfo[] = [];
         sites.forEach((site) => {
@@ -1084,6 +1185,7 @@ export class CoreSitesProvider {
                     siteName: CoreConstants.CONFIG.sitename == '' ? siteInfo?.sitename: CoreConstants.CONFIG.sitename,
                     avatar: siteInfo?.userpictureurl,
                     siteHomeId: siteInfo?.siteid || 1,
+                    loggedOut: !!site.loggedOut,
                 };
                 formattedSites.push(basicInfo);
             }
@@ -1134,8 +1236,7 @@ export class CoreSitesProvider {
      * @return Promise resolved when the sites IDs are retrieved.
      */
     async getLoggedInSitesIds(): Promise<string[]> {
-        const db = await this.appDB;
-        const sites = await db.getRecords<SiteDBEntry>(SITES_TABLE_NAME, { loggedOut : 0 });
+        const sites = await this.sitesTable.getMany({ loggedOut : 0 });
 
         return sites.map((site) => site.id);
     }
@@ -1146,8 +1247,7 @@ export class CoreSitesProvider {
      * @return Promise resolved when the sites IDs are retrieved.
      */
     async getSitesIds(): Promise<string[]> {
-        const db = await this.appDB;
-        const sites = await db.getAllRecords<SiteDBEntry>(SITES_TABLE_NAME);
+        const sites = await this.sitesTable.getMany();
 
         return sites.map((site) => site.id);
     }
@@ -1160,7 +1260,7 @@ export class CoreSitesProvider {
     async getSitesInstances(): Promise<CoreSite[]> {
         const siteIds = await this.getSitesIds();
 
-        return await Promise.all(siteIds.map(async (siteId) => await this.getSite(siteId)));
+        return Promise.all(siteIds.map(async (siteId) => await this.getSite(siteId)));
     }
 
     /**
@@ -1170,13 +1270,7 @@ export class CoreSitesProvider {
      * @return Promise resolved when current site is stored.
      */
     async login(siteId: string): Promise<void> {
-        const db = await this.appDB;
-        const entry = {
-            id: 1,
-            siteId,
-        };
-
-        await db.insertRecord(CURRENT_SITE_TABLE_NAME, entry);
+        await CoreConfig.set(CORE_SITE_CURRENT_SITE_ID_CONFIG, siteId);
 
         CoreEvents.trigger(CoreEvents.LOGIN, {}, siteId);
     }
@@ -1184,9 +1278,10 @@ export class CoreSitesProvider {
     /**
      * Logout the user.
      *
+     * @param options Logout options.
      * @return Promise resolved when the user is logged out.
      */
-    async logout(): Promise<void> {
+    async logout(options: CoreSitesLogoutOptions = {}): Promise<void> {
         if (!this.currentSite) {
             return;
         }
@@ -1197,7 +1292,7 @@ export class CoreSitesProvider {
 
         this.currentSite = undefined;
 
-        if (siteConfig && siteConfig.tool_mobile_forcelogout == '1') {
+        if (options.forceLogout || (siteConfig && siteConfig.tool_mobile_forcelogout == '1')) {
             promises.push(this.setSiteLoggedOut(siteId));
         }
 
@@ -1205,7 +1300,33 @@ export class CoreSitesProvider {
 
         await CoreUtils.ignoreErrors(Promise.all(promises));
 
+        if (options.removeAccount) {
+            await CoreSites.deleteSite(siteId);
+        }
+
         CoreEvents.trigger(CoreEvents.LOGOUT, {}, siteId);
+    }
+
+    /**
+     * Logout the user if authenticated to open a page/url in another site.
+     *
+     * @param siteId Site that will be opened after logout.
+     * @param redirectData Page/url to open after logout.
+     * @return Promise resolved with boolean: true if app will be reloaded after logout.
+     */
+    async logoutForRedirect(siteId: string, redirectData: CoreRedirectPayload): Promise<boolean> {
+        if (!this.currentSite) {
+            return false;
+        }
+
+        if (CoreSitePlugins.hasSitePluginsLoaded) {
+            // The site has site plugins so the app will be restarted. Store the data and logout.
+            CoreApp.storeRedirect(siteId, redirectData);
+        }
+
+        await this.logout();
+
+        return CoreSitePlugins.hasSitePluginsLoaded;
     }
 
     /**
@@ -1218,13 +1339,10 @@ export class CoreSitesProvider {
             return Promise.reject(new CoreError('Session already restored.'));
         }
 
-        const db = await this.appDB;
-
         this.sessionRestored = true;
 
         try {
-            const currentSite = await db.getRecord<CurrentSiteDBEntry>(CURRENT_SITE_TABLE_NAME, { id: 1 });
-            const siteId = currentSite.siteId;
+            const siteId = await this.getStoredCurrentSiteId();
             this.logger.debug(`Restore session in site ${siteId}`);
 
             await this.loadSite(siteId);
@@ -1237,15 +1355,15 @@ export class CoreSitesProvider {
      * Mark a site as logged out so the user needs to authenticate again.
      *
      * @param siteId ID of the site.
+     * @param isLoggedOut True if logged out and needs to authenticate again, false otherwise.
      * @return Promise resolved when done.
      */
-    protected async setSiteLoggedOut(siteId: string): Promise<void> {
-        const db = await this.appDB;
+    async setSiteLoggedOut(siteId: string, isLoggedOut: boolean = true): Promise<void> {
         const site = await this.getSite(siteId);
 
-        site.setLoggedOut(true);
+        site.setLoggedOut(isLoggedOut);
 
-        await db.updateRecords(SITES_TABLE_NAME, { loggedOut: 1 }, { id: siteId });
+        await this.sitesTable.update({ loggedOut: isLoggedOut ? 1 : 0 }, { id: siteId });
     }
 
     /**
@@ -1281,19 +1399,20 @@ export class CoreSitesProvider {
      * @return A promise resolved when the site is updated.
      */
     async updateSiteTokenBySiteId(siteId: string, token: string, privateToken: string = ''): Promise<void> {
-        const db = await this.appDB;
         const site = await this.getSite(siteId);
-        const newValues: Partial<SiteDBEntry> = {
-            token,
-            privateToken,
-            loggedOut: 0,
-        };
 
         site.token = token;
         site.privateToken = privateToken;
         site.setLoggedOut(false); // Token updated means the user authenticated again, not logged out anymore.
 
-        await db.updateRecords(SITES_TABLE_NAME, newValues, { id: siteId });
+        await this.sitesTable.update(
+            {
+                token,
+                privateToken,
+                loggedOut: 0,
+            },
+            { id: siteId },
+        );
     }
 
     /**
@@ -1335,9 +1454,7 @@ export class CoreSitesProvider {
             }
 
             try {
-                const db = await this.appDB;
-
-                await db.updateRecords(SITES_TABLE_NAME, newValues, { id: siteId });
+                await this.sitesTable.update(newValues, { id: siteId });
             } finally {
                 CoreEvents.trigger(CoreEvents.SITE_UPDATED, info, siteId);
             }
@@ -1372,7 +1489,7 @@ export class CoreSitesProvider {
     async getSiteIdsFromUrl(url: string, prioritize?: boolean, username?: string): Promise<string[]> {
         // If prioritize is true, check current site first.
         if (prioritize && this.currentSite && this.currentSite.containsUrl(url)) {
-            if (!username || this.currentSite?.getInfo()?.username == username) {
+            if (!username || this.currentSite?.getInfo()?.username === username) {
                 return [this.currentSite.getId()];
             }
         }
@@ -1394,24 +1511,20 @@ export class CoreSitesProvider {
         }
 
         try {
-            const db = await this.appDB;
-            const siteEntries = await db.getAllRecords<SiteDBEntry>(SITES_TABLE_NAME);
+            const siteEntries = await this.sitesTable.getMany();
             const ids: string[] = [];
-            const promises: Promise<unknown>[] = [];
 
-            siteEntries.forEach((site) => {
+            await Promise.all(siteEntries.map(async (site) => {
                 if (!this.sites[site.id]) {
-                    promises.push(this.makeSiteFromSiteListEntry(site));
+                    await this.addSiteFromSiteListEntry(site);
                 }
 
                 if (this.sites[site.id].containsUrl(url)) {
-                    if (!username || this.sites[site.id].getInfo()?.username == username) {
+                    if (!username || this.sites[site.id].getInfo()?.username === username) {
                         ids.push(site.id);
                     }
                 }
-            });
-
-            await Promise.all(promises);
+            }));
 
             return ids;
         } catch {
@@ -1426,10 +1539,9 @@ export class CoreSitesProvider {
      * @return Promise resolved with the site ID.
      */
     async getStoredCurrentSiteId(): Promise<string> {
-        const db = await this.appDB;
-        const currentSite = await db.getRecord<CurrentSiteDBEntry>(CURRENT_SITE_TABLE_NAME, { id: 1 });
+        await this.migrateCurrentSiteLegacyTable();
 
-        return currentSite.siteId;
+        return CoreConfig.get(CORE_SITE_CURRENT_SITE_ID_CONFIG);
     }
 
     /**
@@ -1438,9 +1550,7 @@ export class CoreSitesProvider {
      * @return Promise resolved when done.
      */
     async removeStoredCurrentSite(): Promise<void> {
-        const db = await this.appDB;
-
-        await db.deleteRecords(CURRENT_SITE_TABLE_NAME, { id: 1 });
+        await CoreConfig.delete(CORE_SITE_CURRENT_SITE_ID_CONFIG);
     }
 
     /**
@@ -1462,7 +1572,7 @@ export class CoreSitesProvider {
      * @return Promise resolved with config if available.
      */
     protected async getSiteConfig(site: CoreSite): Promise<CoreSiteConfig | undefined> {
-        return await site.getConfig(undefined, true);
+        return site.getConfig(undefined, true);
     }
 
     /**
@@ -1555,10 +1665,8 @@ export class CoreSitesProvider {
      * @return Promise resolved when done.
      */
     protected async applySiteSchemas(site: CoreSite, schemas: {[name: string]: CoreRegisteredSiteSchema}): Promise<void> {
-        const db = site.getDb();
-
         // Fetch installed versions of the schema.
-        const records = await db.getAllRecords<SchemaVersionsDBEntry>(SCHEMA_VERSIONS_TABLE_NAME);
+        const records = await this.getSiteSchemasTable(site).getMany();
 
         const versions: {[name: string]: number} = {};
         records.forEach((record) => {
@@ -1605,7 +1713,7 @@ export class CoreSitesProvider {
         }
 
         // Set installed version.
-        await db.insertRecord(SCHEMA_VERSIONS_TABLE_NAME, { name: schema.name, version: schema.version });
+        await this.getSiteSchemasTable(site).insert({ name: schema.name, version: schema.version });
     }
 
     /**
@@ -1688,6 +1796,12 @@ export class CoreSitesProvider {
                     getFromCache: false,
                     emergencyCache: false,
                 };
+            case CoreSitesReadingStrategy.STALE_WHILE_REVALIDATE:
+                return {
+                    updateInBackground: true,
+                    getFromCache: true,
+                    saveToCache: true,
+                };
             default:
                 return {};
         }
@@ -1702,6 +1816,63 @@ export class CoreSitesProvider {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     async findSites(search: string): Promise<CoreLoginSiteInfo[]> {
         return [];
+    }
+
+    /**
+     * Check whether a site is using a default image or not.
+     *
+     * @param site Site info.
+     * @returns Whether the site is using a default image.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    hasDefaultImage(site: CoreLoginSiteInfo): boolean {
+        return false;
+    }
+
+    /**
+     * Migrate the legacy current_site table.
+     */
+    protected async migrateCurrentSiteLegacyTable(): Promise<void> {
+        if (await CoreConfig.has('current_site_migrated')) {
+            // Already migrated.
+            return;
+        }
+
+        try {
+            const db = CoreApp.getDB();
+
+            const { siteId } = await db.getRecord<{ siteId: string }>('current_site');
+
+            await CoreConfig.set(CORE_SITE_CURRENT_SITE_ID_CONFIG, siteId);
+            await CoreApp.deleteTableSchema('current_site');
+            await db.dropTable('current_site');
+        } catch {
+            // There was no current site, silence the error.
+        } finally {
+            await CoreConfig.set('current_site_migrated', 1);
+        }
+    }
+
+    /**
+     * Get schemas table for the given site.
+     *
+     * @param site Site.
+     * @returns Scehmas Table.
+     */
+    protected getSiteSchemasTable(site: CoreSite): AsyncInstance<CoreDatabaseTable<SchemaVersionsDBEntry, 'name'>> {
+        const siteId = site.getId();
+
+        this.schemasTables[siteId] = this.schemasTables[siteId] ?? asyncInstance(
+            () => this.getSiteTable(SCHEMA_VERSIONS_TABLE_NAME, {
+                siteId: siteId,
+                database: site.getDb(),
+                config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
+                primaryKeyColumns: ['name'],
+                onDestroy: () => delete this.schemasTables[siteId],
+            }),
+        );
+
+        return this.schemasTables[siteId];
     }
 
 }
@@ -1770,6 +1941,7 @@ export type CoreSiteBasicInfo = {
     avatar?: string; // User's avatar.
     badge?: number; // Badge to display in the site.
     siteHomeId?: number; // Site home ID.
+    loggedOut: boolean; // If Site is logged out.
 };
 
 /**
@@ -1862,6 +2034,7 @@ export const enum CoreSitesReadingStrategy {
     PREFER_CACHE,
     ONLY_NETWORK,
     PREFER_NETWORK,
+    STALE_WHILE_REVALIDATE,
 }
 
 /**
@@ -1892,4 +2065,12 @@ export type CoreSitesLoginTokenResponse = {
     stacktrace?: string;
     debuginfo?: string;
     reproductionlink?: string;
+};
+
+/**
+ * Options for logout.
+ */
+export type CoreSitesLogoutOptions = {
+    forceLogout?: boolean; // If true, site will be marked as logged out, no matter the value tool_mobile_forcelogout.
+    removeAccount?: boolean; // If true, site will be removed too after logout.
 };

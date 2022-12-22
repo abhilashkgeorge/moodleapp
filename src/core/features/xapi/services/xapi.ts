@@ -14,13 +14,13 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites } from '@services/sites';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreSite } from '@classes/site';
 import { CoreXAPIOffline, CoreXAPIOfflineSaveStatementsOptions } from './offline';
 import { makeSingleton } from '@singletons';
+import { CoreText } from '@singletons/text';
 
 /**
  * Service to provide XAPI functionalities.
@@ -65,7 +65,7 @@ export class CoreXAPIProvider {
     async getUrl(contextId: number, type: string, siteId?: string): Promise<string> {
         const site = await CoreSites.getSite(siteId);
 
-        return CoreTextUtils.concatenatePaths(site.getURL(), `xapi/${type}/${contextId}`);
+        return CoreText.concatenatePaths(site.getURL(), `xapi/${type}/${contextId}`);
     }
 
     /**
@@ -94,7 +94,7 @@ export class CoreXAPIProvider {
             return false;
         };
 
-        if (!CoreApp.isOnline() || options.offline) {
+        if (!CoreNetwork.isOnline() || options.offline) {
             // App is offline, store the action.
             return storeOffline();
         }

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { CoreConstants } from '@/core/constants';
-import { Component, Input, OnChanges, OnDestroy, OnInit } from '@angular/core';
+import { Component, ElementRef, Input, OnChanges, OnDestroy, OnInit } from '@angular/core';
 import { CoreCourseProvider, CoreCourse } from '@features/course/services/course';
 import { CoreCourseHelper, CorePrefetchStatusInfo } from '@features/course/services/course-helper';
 import { CoreUser } from '@features/user/services/user';
@@ -21,6 +21,7 @@ import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { Translate } from '@singletons';
+import { CoreColors } from '@singletons/colors';
 import { CoreEventCourseStatusChanged, CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreCourseListItem, CoreCourses, CoreCoursesProvider } from '../../services/courses';
 import { CoreCoursesHelper, CoreEnrolledCourseDataWithExtraInfoAndOptions } from '../../services/courses-helper';
@@ -54,7 +55,6 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
     };
 
     showSpinner = false;
-    downloadCourseEnabled = false;
     courseOptionMenuEnabled = false;
     progress = -1;
     completionUserTracked: boolean | undefined = false;
@@ -62,13 +62,18 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
     protected courseStatus = CoreConstants.NOT_DOWNLOADED;
     protected isDestroyed = false;
     protected courseStatusObserver?: CoreEventObserver;
-    protected siteUpdatedObserver?: CoreEventObserver;
+
+    protected element: HTMLElement;
+
+    constructor(element: ElementRef) {
+        this.element = element.nativeElement;
+    }
 
     /**
      * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
-        CoreCoursesHelper.loadCourseColorAndImage(this.course);
+        this.setCourseColor();
 
         // Assume is enroled if mode is not listwithenrol.
         this.isEnrolled = this.layout != 'listwithenrol' || this.course.progress !== undefined;
@@ -86,31 +91,12 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
         }
 
         if (this.isEnrolled) {
-            if (this.showDownload) {
-                this.initPrefetchCourse();
-            }
-
-            this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-
-            if (this.downloadCourseEnabled) {
-                this.initPrefetchCourse();
-            }
-
             // This field is only available from 3.6 onwards.
             this.courseOptionMenuEnabled = (this.layout != 'listwithenrol' && this.layout != 'summarycard') &&
                 this.course.isfavourite !== undefined;
 
-            // Refresh the enabled flag if site is updated.
-            this.siteUpdatedObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
-                const wasEnabled = this.downloadCourseEnabled;
+            this.initPrefetchCourse();
 
-                this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-
-                if (!wasEnabled && this.downloadCourseEnabled) {
-                    // Download course is enabled now, initialize it.
-                    this.initPrefetchCourse();
-                }
-            }, CoreSites.getCurrentSiteId());
         } else if ('enrollmentmethods' in this.course) {
             this.enrolmentIcons = [];
 
@@ -127,8 +113,8 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
                     });
                 } else if (instance === 'paypal') {
                     this.enrolmentIcons.push({
-                        label: 'core.courses.paypalaccepted',
-                        icon: 'fab-paypal',
+                        label: 'core.courses.otherenrolments',
+                        icon: 'fas-external-link-alt',
                     });
                 }
             });
@@ -143,12 +129,26 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
     }
 
     /**
+     * Set course color.
+     */
+    protected async setCourseColor(): Promise<void> {
+        await CoreCoursesHelper.loadCourseColorAndImage(this.course);
+
+        if (this.course.color) {
+            this.element.style.setProperty('--course-color', this.course.color);
+
+            const tint = CoreColors.lighter(this.course.color, 50);
+            this.element.style.setProperty('--course-color-tint', tint);
+        } else if(this.course.colorNumber !== undefined) {
+            this.element.classList.add('course-color-' + this.course.colorNumber);
+        }
+    }
+
+    /**
      * @inheritdoc
      */
     ngOnChanges(): void {
-        if (this.showDownload && this.isEnrolled) {
-            this.initPrefetchCourse();
-        }
+        this.initPrefetchCourse();
 
         this.updateCourseFields();
     }
@@ -163,15 +163,13 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
 
     /**
      * Open a course.
-     *
-     * @param course The course to open.
      */
     openCourse(): void {
         if (this.isEnrolled) {
             CoreCourseHelper.openCourse(this.course);
         } else {
             CoreNavigator.navigateToSitePath(
-                '/course/' + this.course.id + '/preview',
+                `/course/${this.course.id}/summary`,
                 { params: { course: this.course } },
             );
         }
@@ -179,8 +177,15 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
 
     /**
      * Initialize prefetch course.
+     *
+     * @param forceInit Force initialization of prefetch course info.
      */
-    async initPrefetchCourse(): Promise<void> {
+    async initPrefetchCourse(forceInit = false): Promise<void> {
+        if (!this.isEnrolled || !this.showDownload ||
+            (this.courseOptionMenuEnabled && !forceInit)) {
+            return;
+        }
+
         if (this.courseStatusObserver !== undefined) {
             // Already initialized.
             return;
@@ -254,7 +259,10 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
      */
     async deleteCourseStoredData(): Promise<void> {
         try {
-            await CoreDomUtils.showDeleteConfirm('core.course.confirmdeletestoreddata');
+            await CoreDomUtils.showDeleteConfirm(
+                'addon.storagemanager.confirmdeletedatafrom',
+                { name: this.course.displayname || this.course.fullname },
+            );
         } catch (error) {
             if (!CoreDomUtils.isCanceledError(error)) {
                 throw error;
@@ -282,6 +290,8 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
     async showCourseOptionsMenu(event: Event): Promise<void> {
         event.preventDefault();
         event.stopPropagation();
+
+        this.initPrefetchCourse(true);
 
         const popoverData = await CoreDomUtils.openPopover<string>({
             component: CoreCoursesCourseOptionsMenuComponent,
@@ -391,7 +401,6 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.courseStatusObserver?.off();
-        this.siteUpdatedObserver?.off();
     }
 
 }

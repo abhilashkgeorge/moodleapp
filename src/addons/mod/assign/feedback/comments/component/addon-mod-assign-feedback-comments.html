@@ -3,14 +3,14 @@
     <ion-label>
         <h2>{{ plugin.name }}</h2>
         <p>
-            <core-format-text [component]="component" [componentId]="assign.cmid" [maxHeight]="120" [text]="text" contextLevel="module"
+            <core-format-text [component]="component" [componentId]="assign.cmid" collapsible-item [text]="text" contextLevel="module"
                 [contextInstanceId]="assign.cmid" [courseId]="assign.course">
             </core-format-text>
         </p>
     </ion-label>
     <div slot="end">
         <div class="ion-text-end">
-            <ion-button fill="clear" *ngIf="canEdit" (click)="editComment()" color="dark" [attr.aria-label]="'core.edit' | translate">
+            <ion-button fill="clear" *ngIf="canEdit" (click)="editComment()" [attr.aria-label]="'core.edit' | translate">
                 <ion-icon name="fas-pen" slot="icon-only" aria-hidden="true"></ion-icon>
             </ion-button>
         </div>

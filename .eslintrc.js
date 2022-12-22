@@ -139,7 +139,6 @@ const appConfig = {
             'always',
         ],
         '@typescript-eslint/type-annotation-spacing': 'error',
-        '@typescript-eslint/unified-signatures': 'error',
         'header/header': [
             2,
             'line',
@@ -235,6 +234,11 @@ const appConfig = {
                 prev: '*',
                 next: 'return',
             },
+            {
+                blankLine: 'always',
+                prev: '*',
+                next: 'function',
+            },
         ],
         'prefer-arrow/prefer-arrow-functions': [
             'error',
@@ -271,6 +275,8 @@ testsConfig['rules']['padded-blocks'] = [
         switches: 'never',
     },
 ];
+testsConfig['rules']['jest/expect-expect'] = 'off';
+testsConfig['rules']['jest/no-done-callback'] = 'off';
 testsConfig['plugins'].push('jest');
 testsConfig['extends'].push('plugin:jest/recommended');
 
@@ -291,6 +297,7 @@ module.exports = {
                 '@angular-eslint/template/no-positive-tabindex': 'error',
                 '@angular-eslint/template/accessibility-table-scope': 'error',
                 '@angular-eslint/template/accessibility-valid-aria': 'error',
+                '@angular-eslint/template/no-duplicate-attributes': 'error',
             },
         },
         {

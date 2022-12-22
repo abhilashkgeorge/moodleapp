@@ -190,7 +190,7 @@ export class AddonFilterMathJaxLoaderHandlerService extends CoreFilterDefaultHan
     protected insertSpan(text: string, start: number, end: number): string {
         return CoreTextUtils.substrReplace(
             text,
-            '<span class="nolink">' + text.substring(start, end - start + 1) + '</span>',
+            '<span class="nolink">' + text.substring(start, end + 1) + '</span>',
             start,
             end - start + 1,
         );
@@ -321,17 +321,8 @@ export class AddonFilterMathJaxLoaderHandlerService extends CoreFilterDefaultHan
             return;
         }
 
-        const deferred = CoreUtils.promiseDefer<void>();
-
-        setTimeout(async () => {
-            try {
-                await this.waitForReady(retries + 1);
-            } finally {
-                deferred.resolve();
-            }
-        }, 250);
-
-        return deferred.promise;
+        await CoreUtils.wait(250);
+        await CoreUtils.ignoreErrors(this.waitForReady(retries + 1));
     }
 
     /**

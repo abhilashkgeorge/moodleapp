@@ -11,55 +11,40 @@
         </ion-title>
 
         <ion-buttons slot="end">
-            <core-context-menu>
-                <core-context-menu-item [priority]="900" *ngIf="module.url" [href]="module!.url"
-                    [content]="'core.openinbrowser' | translate" iconAction="fas-external-link-alt">
-                </core-context-menu-item>
-            </core-context-menu>
+            <ion-button fill="clear" *ngIf="module.url && module.uservisible && !unsupported" [href]="module.url" core-link
+                [showBrowserWarning]="false" [attr.aria-label]="'core.openinbrowser' | translate">
+                <ion-icon name="fas-external-link-alt" slot="icon-only" aria-hidden="true"></ion-icon>
+            </ion-button>
         </ion-buttons>
     </ion-toolbar>
 </ion-header>
-<ion-content>
+<ion-content class="limited-width">
     <ion-refresher slot="fixed" [disabled]="!loaded" (ionRefresh)="doRefresh($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>
-    <core-loading [hideUntil]="loaded">
+    <core-loading [hideUntil]="loaded" class="has-spacer">
         <core-course-module-info [module]="module" [courseId]="courseId" [description]="module.description" [component]="module.modname"
-            [componentId]="module.id" [expandDescription]="true">
+            [componentId]="module.id" [expandDescription]="true" [showAvailabilityInfo]="true" (completionChanged)="onCompletionChange()"
+            [showManualCompletion]="showManualCompletion">
+            <div class="core-module-additional-info" title>
+                <ion-chip *ngIf="module.handlerData?.extraBadge" [color]="module.handlerData?.extraBadgeColor"
+                    class="ion-text-wrap ion-text-start" [outline]="true">
+                    <ion-label><span [innerHTML]="module.handlerData?.extraBadge"></span></ion-label>
+                </ion-chip>
 
-            <div class="safe-area-padding-horizontal ion-padding" *ngIf="module.handlerData?.extraBadge">
-                <ion-badge class="ion-text-wrap ion-text-start" [color]="module.handlerData?.extraBadgeColor">
-                    <span [innerHTML]="module.handlerData?.extraBadge"></span>
-                </ion-badge>
-            </div>
-            <div class="safe-area-padding-horizontal ion-padding" *ngIf="module.visible === 0 && (!section || section.visible)">
-                <ion-badge class="ion-text-wrap">
+                <!-- Hidden badges -->
+                <ion-badge color="warning" *ngIf="module.visible === 0" class="ion-text-wrap">
                     {{ 'core.course.hiddenfromstudents' | translate }}
                 </ion-badge>
-            </div>
-            <div class="safe-area-padding-horizontal ion-padding" *ngIf="module.visible !== 0 && module.isStealth">
-                <ion-badge class="ion-text-wrap">
+                <ion-badge color="warning" *ngIf="module.visible !== 0 && module.isStealth" class="ion-text-wrap">
                     {{ 'core.course.hiddenoncoursepage' | translate }}
                 </ion-badge>
             </div>
-            <div class="safe-area-padding-horizontal ion-padding core-module-availabilityinfo" *ngIf="module.availabilityinfo">
-                <ion-badge class="ion-text-wrap">{{ 'core.restricted' | translate }}</ion-badge>
-                <div>
-                    <core-format-text [text]="module.availabilityinfo" contextLevel="module" [contextInstanceId]="module.id"
-                        [courseId]="courseId" class="ion-text-wrap">
-                    </core-format-text>
-                </div>
-            </div>
-            <div class="safe-area-padding-horizontal ion-padding" *ngIf="module.completiondata?.offline">
-                <ion-badge color="warning" class="ion-text-wrap">
-                    {{ 'core.course.manualcompletionnotsynced' | translate }}
-                </ion-badge>
-            </div>
-
-            <core-course-unsupported-module *ngIf="unsupported" [module]="module" [courseId]="courseId"></core-course-unsupported-module>
         </core-course-module-info>
+
+        <core-course-unsupported-module *ngIf="unsupported" [module]="module"></core-course-unsupported-module>
     </core-loading>
 
-    <core-course-module-navigation [hidden]="!loaded" [courseId]="courseId" [currentModule]="module"
-        (completionChanged)="onCompletionChange()" [showManualCompletion]="showManualCompletion"></core-course-module-navigation>
+    <core-course-module-navigation collapsible-footer appearOnBottom [hidden]="!loaded" [courseId]="courseId" [currentModuleId]="module.id">
+    </core-course-module-navigation>
 </ion-content>

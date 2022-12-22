@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnInit, OnDestroy, Input } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import {
@@ -27,7 +27,7 @@ import {
     CoreEnrolledCourseDataWithOptions,
 } from '@features/courses/services/courses-helper';
 import { CoreCourseOptionsDelegate } from '@features/course/services/course-options-delegate';
-import { AddonCourseCompletion } from '@/addons/coursecompletion/services/coursecompletion';
+import { AddonCourseCompletion } from '@addons/coursecompletion/services/coursecompletion';
 import { CoreBlockBaseComponent } from '@features/block/classes/base-block-component';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreSite } from '@classes/site';
@@ -41,17 +41,13 @@ import { CoreSite } from '@classes/site';
 })
 export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseComponent implements OnInit, OnDestroy {
 
-    @Input() downloadEnabled = false;
-
     courses: AddonBlockRecentlyAccessedCourse[] = [];
 
-    downloadCourseEnabled = false;
     scrollElementId!: string;
 
     protected site!: CoreSite;
     protected isDestroyed = false;
     protected coursesObserver?: CoreEventObserver;
-    protected updateSiteObserver?: CoreEventObserver;
     protected fetchContentDefaultError = 'Error getting recent courses data.';
 
     constructor() {
@@ -69,15 +65,6 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
 
         this.scrollElementId = `addon-block-recentlyaccessedcourses-scroll-${scrollId}`;
 
-        // Refresh the enabled flags if enabled.
-        this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-
-        // Refresh the enabled flags if site is updated.
-        this.updateSiteObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
-            this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
-
-        }, this.site.getId());
-
         this.coursesObserver = CoreEvents.on(
             CoreCoursesProvider.EVENT_MY_COURSES_UPDATED,
             (data) => {
@@ -92,10 +79,21 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
     /**
      * @inheritdoc
      */
-    protected async invalidateContent(): Promise<void> {
+    async invalidateContent(): Promise<void> {
         const courseIds = this.courses.map((course) => course.id);
 
         await this.invalidateCourses(courseIds);
+    }
+
+    /**
+     * Invalidate list of courses.
+     *
+     * @return Promise resolved when done.
+     */
+    protected async invalidateCourseList(): Promise<void> {
+        return this.site.isVersionGreaterEqualThan('3.8')
+            ? CoreCourses.invalidateRecentCourses()
+            : CoreCourses.invalidateUserCourses();
     }
 
     /**
@@ -107,12 +105,8 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
     protected async invalidateCourses(courseIds: number[]): Promise<void> {
         const promises: Promise<void>[] = [];
 
-        const invalidateCoursePromise = this.site.isVersionGreaterEqualThan('3.8')
-            ? CoreCourses.invalidateRecentCourses()
-            : CoreCourses.invalidateUserCourses();
-
         // Invalidate course completion data.
-        promises.push(invalidateCoursePromise.finally(() =>
+        promises.push(this.invalidateCourseList().finally(() =>
             CoreUtils.allPromises(courseIds.map((courseId) =>
                 AddonCourseCompletion.invalidateCourseCompletion(courseId)))));
 
@@ -177,7 +171,7 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
     protected async refreshCourseList(data: CoreCoursesMyCoursesUpdatedEventData): Promise<void> {
         if (data.action == CoreCoursesProvider.ACTION_ENROL) {
             // Always update if user enrolled in a course.
-            return await this.refreshContent();
+            return this.refreshContent();
         }
 
         const courseIndex = this.courses.findIndex((course) => course.id == data.courseId);
@@ -185,20 +179,20 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
         if (data.action == CoreCoursesProvider.ACTION_VIEW && data.courseId != CoreSites.getCurrentSiteHomeId()) {
             if (!course) {
                 // Not found, use WS update.
-                return await this.refreshContent();
+                return this.refreshContent();
             }
 
             // Place at the begining.
             this.courses.splice(courseIndex, 1);
             this.courses.unshift(course);
 
-            await this.invalidateCourses([course.id]);
+            await this.invalidateCourseList();
         }
 
         if (data.action == CoreCoursesProvider.ACTION_STATE_CHANGED &&
             data.state == CoreCoursesProvider.STATE_FAVOURITE && course) {
             course.isfavourite = !!data.value;
-            await this.invalidateCourses([course.id]);
+            await this.invalidateCourseList();
         }
     }
 
@@ -208,7 +202,6 @@ export class AddonBlockRecentlyAccessedCoursesComponent extends CoreBlockBaseCom
     ngOnDestroy(): void {
         this.isDestroyed = true;
         this.coursesObserver?.off();
-        this.updateSiteObserver?.off();
     }
 
 }

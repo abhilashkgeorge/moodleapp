@@ -14,7 +14,6 @@
 
 import { Component, ViewChild, ElementRef, OnInit, ChangeDetectorRef } from '@angular/core';
 import { FormBuilder, FormGroup, Validators, FormControl } from '@angular/forms';
-import { IonContent, IonRefresher } from '@ionic/angular';
 
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
@@ -34,6 +33,8 @@ import {
 import { CoreNavigator } from '@services/navigator';
 import { CoreForms } from '@singletons/form';
 import { CoreRecaptchaComponent } from '@components/recaptcha/recaptcha';
+import { CoreText } from '@singletons/text';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Page to signup using email.
@@ -45,7 +46,6 @@ import { CoreRecaptchaComponent } from '@components/recaptcha/recaptcha';
 })
 export class CoreLoginEmailSignupPage implements OnInit {
 
-    @ViewChild(IonContent) content?: IonContent;
     @ViewChild(CoreRecaptchaComponent) recaptchaComponent?: CoreRecaptchaComponent;
     @ViewChild('ageForm') ageFormElement?: ElementRef;
     @ViewChild('signupFormEl') signupFormElement?: ElementRef;
@@ -54,7 +54,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
     siteUrl!: string;
     siteConfig?: CoreSitePublicConfigResponse;
     siteName?: string;
-    authInstructions?: string;
+    authInstructions = '';
     settings?: AuthEmailSignupSettings;
     countries?: CoreCountry[];
     categories?: AuthEmailSignupProfileFieldsCategory[];
@@ -161,7 +161,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
         try {
             // Get site config.
             this.siteConfig = await CoreSites.getSitePublicConfig(this.siteUrl);
-            this.signupUrl = CoreTextUtils.concatenatePaths(this.siteConfig.httpswwwroot, 'login/signup.php');
+            this.signupUrl = CoreText.concatenatePaths(this.siteConfig.httpswwwroot, 'login/signup.php');
 
             if (this.treatSiteConfig()) {
                 // Check content verification.
@@ -256,17 +256,6 @@ export class CoreLoginEmailSignupPage implements OnInit {
     }
 
     /**
-     * Pull to refresh.
-     *
-     * @param event Event.
-     */
-    refreshSettings(event?: IonRefresher): void {
-        this.fetchData().finally(() => {
-            event?.complete();
-        });
-    }
-
-    /**
      * Create account.
      *
      * @param e Event.
@@ -284,9 +273,8 @@ export class CoreLoginEmailSignupPage implements OnInit {
             this.changeDetector.detectChanges();
 
             // Scroll to the first element with errors.
-            const errorFound = CoreDomUtils.scrollToInputError(
+            const errorFound = await CoreDom.scrollToInputError(
                 this.elementRef.nativeElement,
-                this.content,
             );
 
             if (!errorFound) {
@@ -377,7 +365,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
      * Show authentication instructions.
      */
     showAuthInstructions(): void {
-        CoreTextUtils.viewText(Translate.instant('core.login.instructions'), this.authInstructions!);
+        CoreTextUtils.viewText(Translate.instant('core.login.instructions'), this.authInstructions);
     }
 
     /**
@@ -385,7 +373,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
      */
     showContactOnSite(): void {
         CoreUtils.openInBrowser(
-            CoreTextUtils.concatenatePaths(this.siteUrl, '/login/verify_age_location.php'),
+            CoreText.concatenatePaths(this.siteUrl, '/login/verify_age_location.php'),
             { showBrowserWarning: false },
         );
     }
@@ -419,7 +407,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
 
             if (!result.status) {
                 if (this.countryControl.value) {
-                    this.signUpCountryControl!.setValue(this.countryControl.value);
+                    this.signUpCountryControl?.setValue(this.countryControl.value);
                 }
 
                 // Not a minor, go ahead.
@@ -428,7 +416,7 @@ export class CoreLoginEmailSignupPage implements OnInit {
                 // Is a minor.
                 this.isMinor = true;
             }
-        } catch (error) {
+        } catch {
             // Something wrong, redirect to the site.
             CoreDomUtils.showErrorModal('There was an error verifying your age, please try again using the browser.');
         } finally {

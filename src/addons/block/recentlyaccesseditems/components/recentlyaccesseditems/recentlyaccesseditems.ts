@@ -60,7 +60,7 @@ export class AddonBlockRecentlyAccessedItemsComponent extends CoreBlockBaseCompo
      *
      * @return Resolved when done.
      */
-    protected async invalidateContent(): Promise<void> {
+    async invalidateContent(): Promise<void> {
         await AddonBlockRecentlyAccessedItems.invalidateRecentItems();
     }
 
@@ -89,7 +89,7 @@ export class AddonBlockRecentlyAccessedItemsComponent extends CoreBlockBaseCompo
         try {
             const treated = await CoreContentLinksHelper.handleLink(url);
             if (!treated) {
-                return CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(url);
+                return CoreSites.getCurrentSite()?.openInBrowserWithAutoLogin(url);
             }
         } finally {
             modal.dismiss();

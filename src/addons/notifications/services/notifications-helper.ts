@@ -18,13 +18,18 @@ import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
 import { AddonMessageOutputDelegate } from '@addons/messageoutput/services/messageoutput-delegate';
 import {
+    AddonNotifications,
     AddonNotificationsNotificationMessageFormatted,
     AddonNotificationsPreferences,
     AddonNotificationsPreferencesComponent,
     AddonNotificationsPreferencesNotification,
     AddonNotificationsPreferencesNotificationProcessor,
     AddonNotificationsPreferencesProcessor,
+    AddonNotificationsProvider,
 } from './notifications';
+import { CoreEvents } from '@singletons/events';
+import { AddonNotificationsNotificationData } from './handlers/push-click';
+import { CoreTimeUtils } from '@services/utils/time';
 
 /**
  * Service that provides some helper functions for notifications.
@@ -78,34 +83,6 @@ export class AddonNotificationsHelperProvider {
     }
 
     /**
-     * Get a certain processor from a list of processors.
-     *
-     * @param processors List of processors.
-     * @param name Name of the processor to get.
-     * @param fallback True to return first processor if not found, false to not return any. Defaults to true.
-     * @return Processor.
-     */
-    getProcessor(
-        processors: AddonNotificationsPreferencesProcessor[],
-        name: string,
-        fallback: boolean = true,
-    ): AddonNotificationsPreferencesProcessor | undefined {
-        if (!processors || !processors.length) {
-            return;
-        }
-
-        const processor = processors.find((processor) => processor.name == name);
-        if (processor) {
-            return processor;
-        }
-
-        // Processor not found, return first if requested.
-        if (fallback) {
-            return processors[0];
-        }
-    }
-
-    /**
      * Return the components and notifications that have a certain processor.
      *
      * @param processorName Name of the processor to filter.
@@ -143,6 +120,46 @@ export class AddonNotificationsHelperProvider {
         return result;
     }
 
+    /**
+     * Mark notification as read, trigger event and invalidate data.
+     *
+     * @param notification Notification object.
+     * @return Promise resolved when done.
+     */
+    async markNotificationAsRead(
+        notification: AddonNotificationsNotificationMessageFormatted | AddonNotificationsNotificationData,
+        siteId?: string,
+    ): Promise<boolean> {
+        if ('read' in notification && (notification.read || notification.timeread > 0)) {
+            // Already read, don't mark it.
+            return false;
+        }
+
+        const notifId = 'savedmessageid' in notification ? notification.savedmessageid || notification.id : notification.id;
+        if (!notifId) {
+            return false;
+        }
+
+        siteId = 'site' in notification ? notification.site : siteId;
+
+        await CoreUtils.ignoreErrors(AddonNotifications.markNotificationRead(notifId, siteId));
+
+        const time = CoreTimeUtils.timestamp();
+        if ('read' in notification) {
+            notification.read = true;
+            notification.timeread = time;
+        }
+
+        await CoreUtils.ignoreErrors(AddonNotifications.invalidateNotificationsList());
+
+        CoreEvents.trigger(AddonNotificationsProvider.READ_CHANGED_EVENT, {
+            id: notifId,
+            time,
+        }, siteId);
+
+        return true;
+    }
+
 }
 
 export const AddonNotificationsHelper = makeSingleton(AddonNotificationsHelperProvider);
@@ -166,7 +183,11 @@ export type AddonNotificationsPreferencesComponentFormatted = Omit<AddonNotifica
  * Preferences notification with some calculated data.
  */
 export type AddonNotificationsPreferencesNotificationFormatted = AddonNotificationsPreferencesNotification & {
-    processorsByName?: Record<string, AddonNotificationsPreferencesNotificationProcessor>; // Calculated in the app.
+    processorsByName?: Record<string, AddonNotificationsPreferencesNotificationProcessorFormatted>; // Calculated in the app.
+};
+
+type AddonNotificationsPreferencesNotificationProcessorFormatted = AddonNotificationsPreferencesNotificationProcessor & {
+    updating?: boolean; // Calculated in the app. Whether the state is being updated.
 };
 
 /**

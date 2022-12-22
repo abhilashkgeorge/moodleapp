@@ -37,14 +37,14 @@ export class AddonModFeedbackAttemptsPage implements AfterViewInit, OnDestroy {
 
     @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
-    promisedAttempts: CorePromisedValue<CoreListItemsManager<AddonModFeedbackAttemptItem, AddonModFeedbackAttemptsSource>>;
+    promisedAttempts: CorePromisedValue<AddonModFeedbackAttemptsManager>;
     fetchFailed = false;
 
     constructor(protected route: ActivatedRoute) {
         this.promisedAttempts = new CorePromisedValue();
     }
 
-    get attempts(): CoreListItemsManager<AddonModFeedbackAttemptItem, AddonModFeedbackAttemptsSource> | null {
+    get attempts(): AddonModFeedbackAttemptsManager | null {
         return this.promisedAttempts.value;
     }
 
@@ -95,7 +95,7 @@ export class AddonModFeedbackAttemptsPage implements AfterViewInit, OnDestroy {
 
             source.selectedGroup = CoreNavigator.getRouteNumberParam('group') || 0;
 
-            this.promisedAttempts.resolve(new CoreListItemsManager(source, this.route.component));
+            this.promisedAttempts.resolve(new AddonModFeedbackAttemptsManager(source, this.route.component));
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
 
@@ -180,4 +180,10 @@ export class AddonModFeedbackAttemptsPage implements AfterViewInit, OnDestroy {
         await attempts.reload();
     }
 
+}
+
+/**
+ * Attempts manager.
+ */
+class AddonModFeedbackAttemptsManager extends CoreListItemsManager<AddonModFeedbackAttemptItem, AddonModFeedbackAttemptsSource> {
 }

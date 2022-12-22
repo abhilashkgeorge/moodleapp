@@ -16,6 +16,7 @@ import { InAppBrowserObject, InAppBrowserOptions } from '@ionic-native/in-app-br
 import { Md5 } from 'ts-md5/dist/md5';
 
 import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreDB } from '@services/db';
 import { CoreEvents } from '@singletons/events';
 import { CoreFile } from '@services/file';
@@ -28,11 +29,11 @@ import {
     CoreWSUploadFileResult,
     CoreWSPreSetsSplitRequest,
 } from '@services/ws';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUrlUtils, CoreUrlParams } from '@services/utils/url';
-import { CoreUtils, CoreUtilsOpenInBrowserOptions, PromiseDefer } from '@services/utils/utils';
+import { CoreUtils, CoreUtilsOpenInBrowserOptions } from '@services/utils/utils';
 import { CoreConstants } from '@/core/constants';
 import { SQLiteDB } from '@classes/sqlitedb';
 import { CoreError } from '@classes/errors/error';
@@ -41,6 +42,24 @@ import { CoreLogger } from '@singletons/logger';
 import { Translate } from '@singletons';
 import { CoreIonLoadingElement } from './ion-loading';
 import { CoreLang } from '@services/lang';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
+import { asyncInstance, AsyncInstance } from '../utils/async-instance';
+import { CoreDatabaseTable } from './database/database-table';
+import { CoreDatabaseCachingStrategy } from './database/database-table-proxy';
+import { CoreSilentError } from './errors/silenterror';
+import { CorePromisedValue } from '@classes/promised-value';
+import {
+    CONFIG_TABLE,
+    CoreSiteConfigDBRecord,
+    CoreSiteLastViewedDBRecord,
+    CoreSiteWSCacheRecord,
+    LAST_VIEWED_TABLE,
+    WSGroups,
+    WS_CACHE_TABLES_PREFIX,
+} from '@services/database/sites';
+import { Observable, ObservableInput, ObservedValueOf, OperatorFunction, Subject } from 'rxjs';
+import { finalize, map, mergeMap } from 'rxjs/operators';
+import { firstValueFrom } from '../utils/rxjs';
 
 /**
  * QR Code type enumeration.
@@ -74,10 +93,6 @@ export class CoreSite {
     static readonly FREQUENCY_SOMETIMES = 2;
     static readonly FREQUENCY_RARELY = 3;
 
-    // Variables for the database.
-    static readonly WS_CACHE_TABLE = 'wscache_2';
-    static readonly CONFIG_TABLE = 'core_site_config';
-
     static readonly MINIMUM_MOODLE_VERSION = '3.5';
 
     // Versions of Moodle releases.
@@ -89,7 +104,7 @@ export class CoreSite {
         '3.9': 2020061500,
         '3.10': 2020110900,
         '3.11': 2021051700,
-        '4.0': 2021100300, // @todo [4.0] replace with right value when released. Using a tmp value to be able to test new things.
+        '4.0': 2022041900,
     };
 
     // Possible cache update frequencies.
@@ -103,11 +118,14 @@ export class CoreSite {
     // Rest of variables.
     protected logger: CoreLogger;
     protected db?: SQLiteDB;
+    protected cacheTables: Record<WSGroups, AsyncInstance<CoreDatabaseTable<CoreSiteWSCacheRecord>>>;
+    protected configTable: AsyncInstance<CoreDatabaseTable<CoreSiteConfigDBRecord, 'name'>>;
+    protected lastViewedTable: AsyncInstance<CoreDatabaseTable<CoreSiteLastViewedDBRecord, 'component' | 'id'>>;
     protected cleanUnicode = false;
     protected lastAutoLogin = 0;
     protected offlineDisabled = false;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    protected ongoingRequests: { [cacheId: string]: Promise<any> } = {};
+    protected ongoingRequests: Record<string, Record<OngoingRequestType, WSObservable<any> | undefined>> = {};
     protected requestQueue: RequestQueueItem[] = [];
     protected requestQueueTimeout: number | null = null;
     protected tokenPluginFileWorks?: boolean;
@@ -136,6 +154,30 @@ export class CoreSite {
     ) {
         this.logger = CoreLogger.getInstance('CoreSite');
         this.siteUrl = CoreUrlUtils.removeUrlParams(this.siteUrl); // Make sure the URL doesn't have params.
+
+        this.cacheTables = Object.values(WSGroups).reduce((tables, group) => {
+            tables[group] = asyncInstance(() => CoreSites.getSiteTable(WS_CACHE_TABLES_PREFIX + group, {
+                siteId: this.getId(),
+                database: this.getDb(),
+                config: { cachingStrategy: CoreDatabaseCachingStrategy.None },
+            }));
+
+            return tables;
+        }, <Record<WSGroups, AsyncInstance<CoreDatabaseTable<CoreSiteWSCacheRecord>>>> {});
+
+        this.configTable = asyncInstance(() => CoreSites.getSiteTable(CONFIG_TABLE, {
+            siteId: this.getId(),
+            database: this.getDb(),
+            config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
+            primaryKeyColumns: ['name'],
+        }));
+
+        this.lastViewedTable = asyncInstance(() => CoreSites.getSiteTable(LAST_VIEWED_TABLE, {
+            siteId: this.getId(),
+            database: this.getDb(),
+            config: { cachingStrategy: CoreDatabaseCachingStrategy.Eager },
+            primaryKeyColumns: ['component', 'id'],
+        }));
         this.setInfo(infos);
         this.calculateOfflineDisabled();
 
@@ -350,6 +392,16 @@ export class CoreSite {
     }
 
     /**
+     * Check if current user is Admin.
+     * Works properly since v3.8. See more in: {@link} https://tracker.moodle.org/browse/MDL-65550
+     *
+     * @returns Whether the user is Admin.
+     */
+    isAdmin(): boolean {
+        return this.getInfo()?.userissiteadmin ?? false;
+    }
+
+    /**
      * Check if the user authenticated in the site using an OAuth method.
      *
      * @return Whether the user authenticated in the site using an OAuth method.
@@ -443,18 +495,25 @@ export class CoreSite {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     read<T = unknown>(method: string, data: any, preSets?: CoreSiteWSPreSets): Promise<T> {
-        preSets = preSets || {};
-        if (preSets.getFromCache === undefined) {
-            preSets.getFromCache = true;
-        }
-        if (preSets.saveToCache === undefined) {
-            preSets.saveToCache = true;
-        }
-        if (preSets.reusePending === undefined) {
-            preSets.reusePending = true;
-        }
+        return firstValueFrom(this.readObservable<T>(method, data, preSets));
+    }
 
-        return this.request(method, data, preSets);
+    /**
+     * Read some data from the Moodle site using WS. Requests are cached by default.
+     *
+     * @param method WS method to use.
+     * @param data Data to send to the WS.
+     * @param preSets Extra options.
+     * @return Observable returning the WS data.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    readObservable<T = unknown>(method: string, data: any, preSets?: CoreSiteWSPreSets): WSObservable<T> {
+        preSets = preSets || {};
+        preSets.getFromCache = preSets.getFromCache ?? true;
+        preSets.saveToCache = preSets.saveToCache ?? true;
+        preSets.reusePending = preSets.reusePending ?? true;
+
+        return this.requestObservable<T>(method, data, preSets);
     }
 
     /**
@@ -467,18 +526,25 @@ export class CoreSite {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     write<T = unknown>(method: string, data: any, preSets?: CoreSiteWSPreSets): Promise<T> {
-        preSets = preSets || {};
-        if (preSets.getFromCache === undefined) {
-            preSets.getFromCache = false;
-        }
-        if (preSets.saveToCache === undefined) {
-            preSets.saveToCache = false;
-        }
-        if (preSets.emergencyCache === undefined) {
-            preSets.emergencyCache = false;
-        }
+        return firstValueFrom(this.writeObservable<T>(method, data, preSets));
+    }
 
-        return this.request(method, data, preSets);
+    /**
+     * Sends some data to the Moodle site using WS. Requests are NOT cached by default.
+     *
+     * @param method WS method to use.
+     * @param data Data to send to the WS.
+     * @param preSets Extra options.
+     * @return Observable returning the WS data.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    writeObservable<T = unknown>(method: string, data: any, preSets?: CoreSiteWSPreSets): WSObservable<T> {
+        preSets = preSets || {};
+        preSets.getFromCache = preSets.getFromCache ?? false;
+        preSets.saveToCache = preSets.saveToCache ?? false;
+        preSets.emergencyCache = preSets.emergencyCache ?? false;
+
+        return this.requestObservable<T>(method, data, preSets);
     }
 
     /**
@@ -487,8 +553,20 @@ export class CoreSite {
      * @param method The WebService method to be called.
      * @param data Arguments to pass to the method.
      * @param preSets Extra options.
-     * @param retrying True if we're retrying the call for some reason. This is to prevent infinite loops.
      * @return Promise resolved with the response, rejected with CoreWSError if it fails.
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    async request<T = unknown>(method: string, data: any, preSets: CoreSiteWSPreSets): Promise<T> {
+        return firstValueFrom(this.requestObservable<T>(method, data, preSets));
+    }
+
+    /**
+     * WS request to the site.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options.
+     * @return Observable returning the WS data.
      * @description
      *
      * Sends a webservice request to the site. This method will automatically add the
@@ -498,18 +576,18 @@ export class CoreSite {
      * data hasn't expired.
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    async request<T = unknown>(method: string, data: any, preSets: CoreSiteWSPreSets, retrying?: boolean): Promise<T> {
+    requestObservable<T = unknown>(method: string, data: any, preSets: CoreSiteWSPreSets): WSObservable<T> {
         if (this.isLoggedOut() && !ALLOWED_LOGGEDOUT_WS.includes(method)) {
             // Site is logged out, it cannot call WebServices.
             CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {}, this.id);
 
-            throw new CoreError(Translate.instant('core.lostconnection'));
+            // Use a silent error, the SESSION_EXPIRED event will display a message if needed.
+            throw new CoreSilentError(Translate.instant('core.lostconnection'));
         }
 
-        const initialToken = this.token || '';
         data = data || {};
 
-        if (!CoreApp.isOnline() && this.offlineDisabled) {
+        if (!CoreNetwork.isOnline() && this.offlineDisabled) {
             throw new CoreError(Translate.instant('core.errorofflinedisabled'));
         }
 
@@ -532,7 +610,7 @@ export class CoreSite {
 
         if (wsPreSets.cleanUnicode && CoreTextUtils.hasUnicodeData(data)) {
             // Data will be cleaned, notify the user.
-            CoreDomUtils.showToast('core.unicodenotsupported', true, 3000);
+            CoreDomUtils.showToast('core.unicodenotsupported', true, ToastDuration.LONG);
         } else {
             // No need to clean data in this call.
             wsPreSets.cleanUnicode = false;
@@ -558,153 +636,358 @@ export class CoreSite {
 
         const cacheId = this.getCacheId(method, data);
 
-        // Check for an ongoing identical request if we're not ignoring cache.
-        if (preSets.getFromCache && this.ongoingRequests[cacheId]) {
-            const response = await this.ongoingRequests[cacheId];
-
-            // Clone the data, this may prevent errors if in the callback the object is modified.
-            return CoreUtils.clone(response);
+        // Check for an ongoing identical request.
+        const ongoingRequest = this.getOngoingRequest<T>(cacheId, preSets);
+        if (ongoingRequest) {
+            return ongoingRequest;
         }
 
-        const promise = this.getFromCache<T>(method, data, preSets, false).catch(async () => {
-            if (preSets.forceOffline) {
-                // Don't call the WS, just fail.
-                throw new CoreError(
-                    Translate.instant('core.cannotconnect', { $a: CoreSite.MINIMUM_MOODLE_VERSION }),
-                );
+        const observable = this.performRequest<T>(method, data, preSets, wsPreSets).pipe(
+            // Return a clone of the original object, this may prevent errors if in the callback the object is modified.
+            map((data) => CoreUtils.clone(data)),
+        );
+
+        this.setOngoingRequest(cacheId, preSets, observable);
+
+        return observable.pipe(
+            finalize(() => {
+                this.clearOngoingRequest(cacheId, preSets, observable);
+            }),
+        );
+    }
+
+    /**
+     * Get an ongoing request if there's one already.
+     *
+     * @param cacheId Cache ID.
+     * @param preSets Presets.
+     * @return Ongoing request if it exists.
+     */
+    protected getOngoingRequest<T = unknown>(cacheId: string, preSets: CoreSiteWSPreSets): WSObservable<T> | undefined {
+        if (preSets.updateInBackground) {
+            return this.ongoingRequests[cacheId]?.[OngoingRequestType.UPDATE_IN_BACKGROUND];
+        } else if (preSets.getFromCache) { // Only reuse ongoing request when using cache.
+            return this.ongoingRequests[cacheId]?.[OngoingRequestType.STANDARD];
+        }
+    }
+
+    /**
+     * Store an ongoing request in memory.
+     *
+     * @param cacheId Cache ID.
+     * @param preSets Presets.
+     * @param request Request to store.
+     */
+    protected setOngoingRequest<T = unknown>(cacheId: string, preSets: CoreSiteWSPreSets, request: WSObservable<T>): void {
+        this.ongoingRequests[cacheId] = this.ongoingRequests[cacheId] ?? {};
+
+        if (preSets.updateInBackground) {
+            this.ongoingRequests[cacheId][OngoingRequestType.UPDATE_IN_BACKGROUND] = request;
+        } else {
+            this.ongoingRequests[cacheId][OngoingRequestType.STANDARD] = request;
+        }
+    }
+
+    /**
+     * Clear the ongoing request unless it has changed (e.g. a new request that ignores cache).
+     *
+     * @param cacheId Cache ID.
+     * @param preSets Presets.
+     * @param request Current request.
+     */
+    protected clearOngoingRequest<T = unknown>(cacheId: string, preSets: CoreSiteWSPreSets, request: WSObservable<T>): void {
+        this.ongoingRequests[cacheId] = this.ongoingRequests[cacheId] ?? {};
+
+        if (preSets.updateInBackground) {
+            if (this.ongoingRequests[cacheId][OngoingRequestType.UPDATE_IN_BACKGROUND] === request) {
+                delete this.ongoingRequests[cacheId][OngoingRequestType.UPDATE_IN_BACKGROUND];
             }
+        } else {
+            if (this.ongoingRequests[cacheId][OngoingRequestType.STANDARD] === request) {
+                delete this.ongoingRequests[cacheId][OngoingRequestType.STANDARD];
+            }
+        }
+    }
 
-            // Call the WS.
+    /**
+     * Perform a request, getting the response either from cache or WebService.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options related to the site.
+     * @param wsPreSets Extra options related to the WS call.
+     * @return Observable returning the WS data.
+     */
+    protected performRequest<T = unknown>(
+        method: string,
+        data: unknown,
+        preSets: CoreSiteWSPreSets,
+        wsPreSets: CoreWSPreSets,
+    ): WSObservable<T> {
+        const subject = new Subject<T>();
+
+        const run = async () => {
             try {
-                if (method !== 'core_webservice_get_site_info') {
-                    // Send the language to use. Do it after checking cache to prevent losing offline data when changing language.
-                    // Don't send it to core_webservice_get_site_info, that WS is used to check if Moodle version is supported.
-                    data.moodlewssettinglang = preSets.lang ?? await CoreLang.getCurrentLanguage();
-                    // Moodle uses underscore instead of dash.
-                    data.moodlewssettinglang = data.moodlewssettinglang.replace('-', '_');
-                }
-
-                const response = await this.callOrEnqueueRequest<T>(method, data, preSets, wsPreSets);
-
-                if (preSets.saveToCache) {
-                    delete data.moodlewssettinglang;
-                    this.saveToCache(method, data, response, preSets);
-                }
-
-                return response;
-            } catch (error) {
-                if (CoreUtils.isExpiredTokenError(error)) {
-                    if (initialToken !== this.token && !retrying) {
-                        // Token has changed, retry with the new token.
-                        preSets.getFromCache = false; // Don't check cache now. Also, it will skip ongoingRequests.
-
-                        return this.request<T>(method, data, preSets, true);
-                    } else if (CoreApp.isSSOAuthenticationOngoing()) {
-                        // There's an SSO authentication ongoing, wait for it to finish and try again.
-                        await CoreApp.waitForSSOAuthentication();
-
-                        return this.request<T>(method, data, preSets, true);
-                    }
-
-                    // Session expired, trigger event.
-                    CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {}, this.id);
-                    // Change error message. Try to get data from cache, the event will handle the error.
-                    error.message = Translate.instant('core.lostconnection');
-                } else if (error.errorcode === 'userdeleted') {
-                    // User deleted, trigger event.
-                    CoreEvents.trigger(CoreEvents.USER_DELETED, { params: data }, this.id);
-                    error.message = Translate.instant('core.userdeleted');
-
-                    throw new CoreWSError(error);
-                } else if (error.errorcode === 'forcepasswordchangenotice') {
-                    // Password Change Forced, trigger event. Try to get data from cache, the event will handle the error.
-                    CoreEvents.trigger(CoreEvents.PASSWORD_CHANGE_FORCED, {}, this.id);
-                    error.message = Translate.instant('core.forcepasswordchangenotice');
-                } else if (error.errorcode === 'usernotfullysetup') {
-                    // User not fully setup, trigger event. Try to get data from cache, the event will handle the error.
-                    CoreEvents.trigger(CoreEvents.USER_NOT_FULLY_SETUP, {}, this.id);
-                    error.message = Translate.instant('core.usernotfullysetup');
-                } else if (error.errorcode === 'sitepolicynotagreed') {
-                    // Site policy not agreed, trigger event.
-                    CoreEvents.trigger(CoreEvents.SITE_POLICY_NOT_AGREED, {}, this.id);
-                    error.message = Translate.instant('core.login.sitepolicynotagreederror');
-
-                    throw new CoreWSError(error);
-                } else if (error.errorcode === 'dmlwriteexception' && CoreTextUtils.hasUnicodeData(data)) {
-                    if (!this.cleanUnicode) {
-                        // Try again cleaning unicode.
-                        this.cleanUnicode = true;
-
-                        return this.request<T>(method, data, preSets);
-                    }
-                    // This should not happen.
-                    error.message = Translate.instant('core.unicodenotsupported');
-
-                    throw new CoreWSError(error);
-                } else if (error.exception === 'required_capability_exception' || error.errorcode === 'nopermission' ||
-                        error.errorcode === 'notingroup') {
-                    // Translate error messages with missing strings.
-                    if (error.message === 'error/nopermission') {
-                        error.message = Translate.instant('core.nopermissionerror');
-                    } else if (error.message === 'error/notingroup') {
-                        error.message = Translate.instant('core.notingroup');
-                    }
-
-                    // Save the error instead of deleting the cache entry so the same content is displayed in offline.
-                    this.saveToCache(method, data, error, preSets);
-
-                    throw new CoreWSError(error);
-                } else if (preSets.cacheErrors && preSets.cacheErrors.indexOf(error.errorcode) != -1) {
-                    // Save the error instead of deleting the cache entry so the same content is displayed in offline.
-                    this.saveToCache(method, data, error, preSets);
-
-                    throw new CoreWSError(error);
-                } else if (preSets.emergencyCache !== undefined && !preSets.emergencyCache) {
-                    this.logger.debug(`WS call '${method}' failed. Emergency cache is forbidden, rejecting.`);
-
-                    throw new CoreWSError(error);
-                }
-
-                if (preSets.deleteCacheIfWSError && CoreUtils.isWebServiceError(error)) {
-                    // Delete the cache entry and return the entry. Don't block the user with the delete.
-                    CoreUtils.ignoreErrors(this.deleteFromCache(method, data, preSets));
-
-                    throw new CoreWSError(error);
-                }
-
-                this.logger.debug(`WS call '${method}' failed. Trying to use the emergency cache.`);
-                preSets.omitExpires = true;
-                preSets.getFromCache = true;
+                let response: T | WSCachedError;
+                let cachedData: WSCachedData<T> | undefined;
 
                 try {
-                    return await this.getFromCache<T>(method, data, preSets, true);
-                } catch (e) {
-                    throw new CoreWSError(error);
+                    cachedData = await this.getFromCache<T>(method, data, preSets, false);
+                    response = cachedData.response;
+                } catch {
+                    // Not found or expired, call WS.
+                    response = await this.getFromWS<T>(method, data, preSets, wsPreSets);
                 }
+
+                if (
+                    typeof response === 'object' && response !== null &&
+                    (
+                        ('exception' in response && response.exception !== undefined) ||
+                        ('errorcode' in response && response.errorcode !== undefined)
+                    )
+                ) {
+                    subject.error(new CoreWSError(response));
+                } else {
+                    subject.next(<T> response);
+                }
+
+                if (
+                    preSets.updateInBackground &&
+                    !CoreConstants.CONFIG.disableCallWSInBackground &&
+                    cachedData &&
+                    !cachedData.expirationIgnored &&
+                    cachedData.expirationTime !== undefined &&
+                    Date.now() > cachedData.expirationTime
+                ) {
+                    // Update the data in background.
+                    setTimeout(async () => {
+                        try {
+                            preSets = {
+                                ...preSets,
+                                emergencyCache: false,
+                            };
+
+                            const newData = await this.getFromWS<T>(method, data, preSets, wsPreSets);
+
+                            subject.next(newData);
+                        } catch (error) {
+                            // Ignore errors when updating in background.
+                            this.logger.error('Error updating WS data in background', error);
+                        } finally {
+                            subject.complete();
+                        }
+                    });
+                } else {
+                    // No need to update in background, complete the observable.
+                    subject.complete();
+                }
+            } catch (error) {
+                subject.error(error);
             }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        }).then((response: any) => {
-            // Check if the response is an error, this happens if the error was stored in the cache.
-            if (response && (response.exception !== undefined || response.errorcode !== undefined)) {
-                throw new CoreWSError(response);
+        };
+
+        run();
+
+        return subject;
+    }
+
+    /**
+     * Get a request response from WS, if it fails it might try to get it from emergency cache.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options related to the site.
+     * @param wsPreSets Extra options related to the WS call.
+     * @return Promise resolved with the response.
+     */
+    protected async getFromWS<T = unknown>(
+        method: string,
+        data: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        preSets: CoreSiteWSPreSets,
+        wsPreSets: CoreWSPreSets,
+    ): Promise<T> {
+        if (preSets.forceOffline) {
+            // Don't call the WS, just fail.
+            throw new CoreError(
+                Translate.instant('core.cannotconnect', { $a: CoreSite.MINIMUM_MOODLE_VERSION }),
+            );
+        }
+
+        try {
+            const response = await this.callOrEnqueueWS<T>(method, data, preSets, wsPreSets);
+
+            if (preSets.saveToCache) {
+                this.saveToCache(method, data, response, preSets);
             }
 
             return response;
-        });
+        } catch (error) {
+            let useSilentError = false;
 
-        this.ongoingRequests[cacheId] = promise;
+            if (CoreUtils.isExpiredTokenError(error)) {
+                // Session expired, trigger event.
+                CoreEvents.trigger(CoreEvents.SESSION_EXPIRED, {}, this.id);
+                // Change error message. Try to get data from cache, the event will handle the error.
+                error.message = Translate.instant('core.lostconnection');
+                useSilentError = true; // Use a silent error, the SESSION_EXPIRED event will display a message if needed.
+            } else if (error.errorcode === 'userdeleted' || error.errorcode === 'wsaccessuserdeleted') {
+                // User deleted, trigger event.
+                CoreEvents.trigger(CoreEvents.USER_DELETED, { params: data }, this.id);
+                error.message = Translate.instant('core.userdeleted');
 
-        // Clear ongoing request after setting the promise (just in case it's already resolved).
-        try {
-            const response = await promise;
+                throw new CoreWSError(error);
+            } else if (error.errorcode === 'wsaccessusersuspended') {
+                // User suspended, trigger event.
+                CoreEvents.trigger(CoreEvents.USER_SUSPENDED, { params: data }, this.id);
+                error.message = Translate.instant('core.usersuspended');
 
-            // We pass back a clone of the original object, this may prevent errors if in the callback the object is modified.
-            return CoreUtils.clone(response);
-        } finally {
-            // Make sure we don't clear the promise of a newer request that ignores the cache.
-            if (this.ongoingRequests[cacheId] === promise) {
-                delete this.ongoingRequests[cacheId];
+                throw new CoreWSError(error);
+            } else if (error.errorcode === 'wsaccessusernologin') {
+                // User suspended, trigger event.
+                CoreEvents.trigger(CoreEvents.USER_NO_LOGIN, { params: data }, this.id);
+                error.message = Translate.instant('core.usernologin');
+
+                throw new CoreWSError(error);
+            } else if (error.errorcode === 'forcepasswordchangenotice') {
+                // Password Change Forced, trigger event. Try to get data from cache, the event will handle the error.
+                CoreEvents.trigger(CoreEvents.PASSWORD_CHANGE_FORCED, {}, this.id);
+                error.message = Translate.instant('core.forcepasswordchangenotice');
+                useSilentError = true; // Use a silent error, the change password page already displays the appropiate info.
+            } else if (error.errorcode === 'usernotfullysetup') {
+                // User not fully setup, trigger event. Try to get data from cache, the event will handle the error.
+                CoreEvents.trigger(CoreEvents.USER_NOT_FULLY_SETUP, {}, this.id);
+                error.message = Translate.instant('core.usernotfullysetup');
+                useSilentError = true; // Use a silent error, the complete profile page already displays the appropiate info.
+            } else if (error.errorcode === 'sitepolicynotagreed') {
+                // Site policy not agreed, trigger event.
+                CoreEvents.trigger(CoreEvents.SITE_POLICY_NOT_AGREED, {}, this.id);
+                error.message = Translate.instant('core.login.sitepolicynotagreederror');
+
+                throw new CoreWSError(error);
+            } else if (error.errorcode === 'dmlwriteexception' && CoreTextUtils.hasUnicodeData(data)) {
+                if (!this.cleanUnicode) {
+                    // Try again cleaning unicode.
+                    this.cleanUnicode = true;
+
+                    return this.request<T>(method, data, preSets);
+                }
+                // This should not happen.
+                error.message = Translate.instant('core.unicodenotsupported');
+
+                throw new CoreWSError(error);
+            } else if (error.exception === 'required_capability_exception' || error.errorcode === 'nopermission' ||
+                    error.errorcode === 'notingroup') {
+                // Translate error messages with missing strings.
+                if (error.message === 'error/nopermission') {
+                    error.message = Translate.instant('core.nopermissionerror');
+                } else if (error.message === 'error/notingroup') {
+                    error.message = Translate.instant('core.notingroup');
+                }
+
+                if (preSets.saveToCache) {
+                    // Save the error instead of deleting the cache entry so the same content is displayed in offline.
+                    this.saveToCache(method, data, error, preSets);
+                }
+
+                throw new CoreWSError(error);
+            } else if (preSets.cacheErrors && preSets.cacheErrors.indexOf(error.errorcode) != -1) {
+                // Save the error instead of deleting the cache entry so the same content is displayed in offline.
+                this.saveToCache(method, data, error, preSets);
+
+                throw new CoreWSError(error);
+            } else if (preSets.emergencyCache !== undefined && !preSets.emergencyCache) {
+                this.logger.debug(`WS call '${method}' failed. Emergency cache is forbidden, rejecting.`);
+
+                throw new CoreWSError(error);
             }
+
+            if (preSets.deleteCacheIfWSError && CoreUtils.isWebServiceError(error)) {
+                // Delete the cache entry and return the entry. Don't block the user with the delete.
+                CoreUtils.ignoreErrors(this.deleteFromCache(method, data, preSets));
+
+                throw new CoreWSError(error);
+            }
+
+            this.logger.debug(`WS call '${method}' failed. Trying to use the emergency cache.`);
+            preSets = {
+                ...preSets,
+                omitExpires: true,
+                getFromCache: true,
+            };
+
+            try {
+                const cachedData = await this.getFromCache<T>(method, data, preSets, true);
+
+                if (
+                    typeof cachedData.response === 'object' && cachedData.response !== null &&
+                    (
+                        ('exception' in cachedData.response && cachedData.response.exception !== undefined) ||
+                        ('errorcode' in cachedData.response && cachedData.response.errorcode !== undefined)
+                    )
+                ) {
+                    throw new CoreWSError(cachedData.response);
+                }
+
+                return <T> cachedData.response;
+            } catch {
+                if (useSilentError) {
+                    throw new CoreSilentError(error.message);
+                }
+
+                throw new CoreWSError(error);
+            }
+        }
+    }
+
+    /**
+     * Get a request response from WS.
+     *
+     * @param method The WebService method to be called.
+     * @param data Arguments to pass to the method.
+     * @param preSets Extra options related to the site.
+     * @param wsPreSets Extra options related to the WS call.
+     * @return Promise resolved with the response.
+     */
+    protected async callOrEnqueueWS<T = unknown>(
+        method: string,
+        data: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+        preSets: CoreSiteWSPreSets,
+        wsPreSets: CoreWSPreSets,
+    ): Promise<T> {
+        // Call the WS.
+        const initialToken = this.token ?? '';
+
+        // Call the WS.
+        if (method !== 'core_webservice_get_site_info') {
+            // Send the language to use. Do it after checking cache to prevent losing offline data when changing language.
+            // Don't send it to core_webservice_get_site_info, that WS is used to check if Moodle version is supported.
+            data = {
+                ...data,
+                moodlewssettinglang: preSets.lang ?? await CoreLang.getCurrentLanguage(),
+            };
+            // Moodle uses underscore instead of dash.
+            data.moodlewssettinglang = data.moodlewssettinglang.replace('-', '_');
+
+        }
+
+        try {
+            return await this.callOrEnqueueRequest<T>(method, data, preSets, wsPreSets);
+        } catch (error) {
+            if (CoreUtils.isExpiredTokenError(error)) {
+                if (initialToken !== this.token) {
+                    // Token has changed, retry with the new token.
+                    wsPreSets.wsToken = this.token ?? '';
+
+                    return await this.callOrEnqueueRequest<T>(method, data, preSets, wsPreSets);
+                } else if (CoreApp.isSSOAuthenticationOngoing()) {
+                    // There's an SSO authentication ongoing, wait for it to finish and try again.
+                    await CoreApp.waitForSSOAuthentication();
+
+                    return await this.callOrEnqueueRequest<T>(method, data, preSets, wsPreSets);
+                }
+            }
+
+            throw error;
         }
     }
 
@@ -733,7 +1016,7 @@ export class CoreSite {
         if (preSets.reusePending) {
             const request = this.requestQueue.find((request) => request.cacheId == cacheId);
             if (request) {
-                return request.deferred.promise;
+                return request.deferred;
             }
         }
 
@@ -743,7 +1026,7 @@ export class CoreSite {
             data,
             preSets,
             wsPreSets,
-            deferred: CoreUtils.promiseDefer(),
+            deferred: new CorePromisedValue(),
         };
 
         return this.enqueueRequest(request);
@@ -762,12 +1045,12 @@ export class CoreSite {
             this.processRequestQueue();
         } else if (!this.requestQueueTimeout) {
             this.requestQueueTimeout = window.setTimeout(
-                this.processRequestQueue.bind(this),
+                () => this.processRequestQueue(),
                 CoreConstants.CONFIG.wsrequestqueuedelay,
             );
         }
 
-        return request.deferred.promise;
+        return request.deferred;
     }
 
     /**
@@ -906,28 +1189,28 @@ export class CoreSite {
      * @param preSets Extra options.
      * @param emergency Whether it's an "emergency" cache call (WS call failed).
      * @param originalData Arguments to pass to the method before being converted to strings.
-     * @return Promise resolved with the WS response.
+     * @return Cached data.
      */
     protected async getFromCache<T = unknown>(
         method: string,
         data: any, // eslint-disable-line @typescript-eslint/no-explicit-any
         preSets: CoreSiteWSPreSets,
         emergency?: boolean,
-    ): Promise<T> {
-        const db = this.db;
-        if (!db || !preSets.getFromCache) {
+    ): Promise<WSCachedData<T>> {
+        if (!this.db || !preSets.getFromCache) {
             throw new CoreError('Get from cache is disabled.');
         }
 
         const id = this.getCacheId(method, data);
+        const group = this.getWSGroupFromWSName(method);
         let entry: CoreSiteWSCacheRecord | undefined;
 
         if (preSets.getCacheUsingCacheKey || (emergency && preSets.getEmergencyCacheUsingCacheKey)) {
-            const entries = await db.getRecords<CoreSiteWSCacheRecord>(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey });
+            const entries = await this.cacheTables[group].getMany({ key: preSets.cacheKey });
 
             if (!entries.length) {
                 // Cache key not found, get by params sent.
-                entry = await db.getRecord(CoreSite.WS_CACHE_TABLE, { id });
+                entry = await this.cacheTables[group].getOneByPrimaryKey({ id });
             } else {
                 if (entries.length > 1) {
                     // More than one entry found. Search the one with same ID as this call.
@@ -939,7 +1222,7 @@ export class CoreSite {
                 }
             }
         } else {
-            entry = await db.getRecord(CoreSite.WS_CACHE_TABLE, { id });
+            entry = await this.cacheTables[group].getOneByPrimaryKey({ id });
         }
 
         if (entry === undefined) {
@@ -949,12 +1232,22 @@ export class CoreSite {
         const now = Date.now();
         let expirationTime: number | undefined;
 
-        preSets.omitExpires = preSets.omitExpires || preSets.forceOffline || !CoreApp.isOnline();
+        const forceCache = preSets.omitExpires || preSets.forceOffline || !CoreNetwork.isOnline();
 
-        if (!preSets.omitExpires) {
+        if (!forceCache) {
             expirationTime = entry.expirationTime + this.getExpirationDelay(preSets.updateFrequency);
 
-            if (now > expirationTime) {
+            if (preSets.updateInBackground && !CoreConstants.CONFIG.disableCallWSInBackground) {
+                // Use a extended expiration time.
+                const extendedTime = entry.expirationTime +
+                    (CoreConstants.CONFIG.callWSInBackgroundExpirationTime ?? CoreConstants.SECONDS_WEEK * 1000);
+
+                if (now > extendedTime) {
+                    this.logger.debug('Cached element found, but it is expired even for call WS in background.');
+
+                    throw new CoreError('Cache entry is expired.');
+                }
+            } else if (now > expirationTime) {
                 this.logger.debug('Cached element found, but it is expired');
 
                 throw new CoreError('Cache entry is expired.');
@@ -969,10 +1262,33 @@ export class CoreSite {
                 this.logger.info(`Cached element found, id: ${id}. Expires in expires in ${expires} seconds`);
             }
 
-            return <T> CoreTextUtils.parseJSON(entry.data, {});
+            return {
+                response: <T> CoreTextUtils.parseJSON(entry.data, {}),
+                expirationIgnored: forceCache,
+                expirationTime,
+            };
         }
 
         throw new CoreError('Cache entry not valid.');
+    }
+
+    /**
+     * Get WS group based on a WS name.
+     *
+     * @return WS group.
+     */
+    protected getWSGroupFromWSName(name: string): WSGroups {
+        if (name.startsWith('mod_')) {
+            return WSGroups.MOD;
+        } else if (name.startsWith('tool_')) {
+            return WSGroups.TOOL;
+        } else if (name.startsWith('block_') || name.startsWith('core_block_')) {
+            return WSGroups.BLOCK;
+        } else if (name.startsWith('core_')) {
+            return WSGroups.CORE;
+        } else {
+            return WSGroups.OTHER;
+        }
     }
 
     /**
@@ -990,12 +1306,20 @@ export class CoreSite {
             extraClause = ' AND componentId = ?';
         }
 
-        const size = <number> await this.getDb().getFieldSql(
-            'SELECT SUM(length(data)) FROM ' + CoreSite.WS_CACHE_TABLE + ' WHERE component = ?' + extraClause,
-            params,
-        );
+        const sizes = await Promise.all(Object.values(this.cacheTables).map(table => table.reduce(
+            {
+                sql: 'SUM(length(data))',
+                js: (size, record) => size + record.data.length,
+                jsInitialValue: 0,
+            },
+            {
+                sql: 'WHERE component = ?' + extraClause,
+                sqlParams: params,
+                js: record => record.component === component && (params.length === 1 || record.componentId === componentId),
+            },
+        )));
 
-        return size;
+        return sizes.reduce((totalSize, size) => totalSize + size, 0);
     }
 
     /**
@@ -1009,10 +1333,6 @@ export class CoreSite {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected async saveToCache(method: string, data: any, response: any, preSets: CoreSiteWSPreSets): Promise<void> {
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized.');
-        }
-
         if (preSets.uniqueCacheKey) {
             // Cache key must be unique, delete all entries with same cache key.
             await CoreUtils.ignoreErrors(this.deleteFromCache(method, data, preSets, true));
@@ -1021,6 +1341,7 @@ export class CoreSite {
         // Since 3.7, the expiration time contains the time the entry is modified instead of the expiration time.
         // We decided to reuse this field to prevent modifying the database table.
         const id = this.getCacheId(method, data);
+        const group = this.getWSGroupFromWSName(method);
         const entry = {
             id,
             data: JSON.stringify(response),
@@ -1038,7 +1359,7 @@ export class CoreSite {
             }
         }
 
-        await this.db.insertRecord(CoreSite.WS_CACHE_TABLE, entry);
+        await this.cacheTables[group].insert(entry);
     }
 
     /**
@@ -1052,16 +1373,13 @@ export class CoreSite {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     protected async deleteFromCache(method: string, data: any, preSets: CoreSiteWSPreSets, allCacheKey?: boolean): Promise<void> {
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized.');
-        }
-
         const id = this.getCacheId(method, data);
+        const group = this.getWSGroupFromWSName(method);
 
         if (allCacheKey) {
-            await this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, { key: preSets.cacheKey });
+            await this.cacheTables[group].delete({ key: preSets.cacheKey });
         } else {
-            await this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, { id });
+            await this.cacheTables[group].deleteByPrimaryKey({ id });
         }
     }
 
@@ -1078,18 +1396,13 @@ export class CoreSite {
             return;
         }
 
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized');
-        }
+        const params = { component };
 
-        const params = {
-            component,
-        };
         if (componentId) {
             params['componentId'] = componentId;
         }
 
-        await this.db.deleteRecords(CoreSite.WS_CACHE_TABLE, params);
+        await Promise.all(Object.values(this.cacheTables).map(table => table.delete(params)));
     }
 
     /*
@@ -1121,14 +1434,10 @@ export class CoreSite {
      * @return Promise resolved when the cache entries are invalidated.
      */
     async invalidateWsCache(): Promise<void> {
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized');
-        }
-
         this.logger.debug('Invalidate all the cache for site: ' + this.id);
 
         try {
-            await this.db.updateRecords(CoreSite.WS_CACHE_TABLE, { expirationTime: 0 });
+            await Promise.all(Object.values(this.cacheTables).map(table => table.update({ expirationTime: 0 })));
         } finally {
             CoreEvents.trigger(CoreEvents.WS_CACHE_INVALIDATED, {}, this.getId());
         }
@@ -1141,16 +1450,13 @@ export class CoreSite {
      * @return Promise resolved when the cache entries are invalidated.
      */
     async invalidateWsCacheForKey(key: string): Promise<void> {
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized');
-        }
         if (!key) {
             return;
         }
 
         this.logger.debug('Invalidate cache for key: ' + key);
 
-        await this.db.updateRecords(CoreSite.WS_CACHE_TABLE, { expirationTime: 0 }, { key });
+        await Promise.all(Object.values(this.cacheTables).map(table => table.update({ expirationTime: 0 }, { key })));
     }
 
     /**
@@ -1178,18 +1484,17 @@ export class CoreSite {
      * @return Promise resolved when the cache entries are invalidated.
      */
     async invalidateWsCacheForKeyStartingWith(key: string): Promise<void> {
-        if (!this.db) {
-            throw new CoreError('Site DB not initialized');
-        }
         if (!key) {
             return;
         }
 
         this.logger.debug('Invalidate cache for key starting with: ' + key);
 
-        const sql = 'UPDATE ' + CoreSite.WS_CACHE_TABLE + ' SET expirationTime=0 WHERE key LIKE ?';
-
-        await this.db.execute(sql, [key + '%']);
+        await Promise.all(Object.values(this.cacheTables).map(table => table.updateWhere({ expirationTime: 0 }, {
+            sql: 'key LIKE ?',
+            sqlParams: [key + '%'],
+            js: record => !!record.key?.startsWith(key),
+        })));
     }
 
     /**
@@ -1257,16 +1562,20 @@ export class CoreSite {
     }
 
     /**
-     * Gets an approximation of the cache table usage of the site.
+     * Gets an approximation of the cache tables usage of the site.
      *
-     * Currently this is just the total length of the data fields in the cache table.
+     * Currently this is just the total length of the data fields in the cache tables.
      *
-     * @return Promise resolved with the total size of all data in the cache table (bytes)
+     * @return Promise resolved with the total size of all data in the cache tables (bytes)
      */
     async getCacheUsage(): Promise<number> {
-        const size = <number> await this.getDb().getFieldSql('SELECT SUM(length(data)) FROM ' + CoreSite.WS_CACHE_TABLE);
+        const sizes = await Promise.all(Object.values(this.cacheTables).map(table => table.reduce({
+            sql: 'SUM(length(data))',
+            js: (size, record) => size + record.data.length,
+            jsInitialValue: 0,
+        })));
 
-        return size;
+        return sizes.reduce((totalSize, size) => totalSize + size, 0);
     }
 
     /**
@@ -1356,9 +1665,109 @@ export class CoreSite {
     /**
      * Get the public config of this site.
      *
+     * @param options Options.
      * @return Promise resolved with public config. Rejected with an object if error, see CoreWSProvider.callAjax.
      */
-    async getPublicConfig(): Promise<CoreSitePublicConfigResponse> {
+    async getPublicConfig(options: { readingStrategy?: CoreSitesReadingStrategy } = {}): Promise<CoreSitePublicConfigResponse> {
+        if (!this.db) {
+            return this.requestPublicConfig();
+        }
+
+        const method = 'tool_mobile_get_public_config';
+        const cacheId = this.getCacheId(method, {});
+        const cachePreSets: CoreSiteWSPreSets = {
+            getFromCache: true,
+            saveToCache: true,
+            emergencyCache: true,
+            cacheKey: this.getPublicConfigCacheKey(),
+            ...CoreSites.getReadingStrategyPreSets(options.readingStrategy),
+        };
+
+        if (this.offlineDisabled) {
+            // Offline is disabled, don't use cache.
+            cachePreSets.getFromCache = false;
+            cachePreSets.saveToCache = false;
+            cachePreSets.emergencyCache = false;
+        }
+
+        // Check for an ongoing identical request if we're not ignoring cache.
+
+        // Check for an ongoing identical request.
+        const ongoingRequest = this.getOngoingRequest<CoreSitePublicConfigResponse>(cacheId, cachePreSets);
+        if (ongoingRequest) {
+            return firstValueFrom(ongoingRequest);
+        }
+
+        const subject = new Subject<CoreSitePublicConfigResponse>();
+        const observable = subject.pipe(
+            // Return a clone of the original object, this may prevent errors if in the callback the object is modified.
+            map((data) => CoreUtils.clone(data)),
+            finalize(() => {
+                this.clearOngoingRequest(cacheId, cachePreSets, observable);
+            }),
+        );
+
+        this.setOngoingRequest(cacheId, cachePreSets, observable);
+
+        this.getFromCache<CoreSitePublicConfigResponse>(method, {}, cachePreSets, false)
+            .then(cachedData => cachedData.response)
+            .catch(async () => {
+                if (cachePreSets.forceOffline) {
+                    // Don't call the WS, just fail.
+                    throw new CoreError(
+                        Translate.instant('core.cannotconnect', { $a: CoreSite.MINIMUM_MOODLE_VERSION }),
+                    );
+                }
+
+                // Call the WS.
+                try {
+                    const config = await this.requestPublicConfig();
+
+                    if (cachePreSets.saveToCache) {
+                        this.saveToCache(method, {}, config, cachePreSets);
+                    }
+
+                    return config;
+                } catch (error) {
+                    cachePreSets.omitExpires = true;
+                    cachePreSets.getFromCache = true;
+
+                    try {
+                        const cachedData = await this.getFromCache<CoreSitePublicConfigResponse>(method, {}, cachePreSets, true);
+
+                        return cachedData.response;
+                    } catch {
+                        throw error;
+                    }
+                }
+            }).then((response) => {
+                // The app doesn't store exceptions for this call, it's safe to assume type CoreSitePublicConfigResponse.
+                subject.next(<CoreSitePublicConfigResponse> response);
+                subject.complete();
+
+                return;
+            }).catch((error) => {
+                subject.error(error);
+            });
+
+        return firstValueFrom(observable);
+    }
+
+    /**
+     * Get cache key for getPublicConfig WS calls.
+     *
+     * @return Cache key.
+     */
+    protected getPublicConfigCacheKey(): string {
+        return 'tool_mobile_get_public_config';
+    }
+
+    /**
+     * Perform a request to the server to get the public config of this site.
+     *
+     * @return Promise resolved with public config.
+     */
+    protected async requestPublicConfig(): Promise<CoreSitePublicConfigResponse> {
         const preSets: CoreWSAjaxPreSets = {
             siteUrl: this.siteUrl,
         };
@@ -1420,13 +1829,14 @@ export class CoreSite {
      * @param alertMessage If defined, an alert will be shown before opening the browser.
      * @param options Other options.
      * @return Promise resolved when done, rejected otherwise.
+     * @deprecated since 4.1. Use openInBrowserWithAutoLogin instead, now it always checks that URL belongs to same site.
      */
     async openInBrowserWithAutoLoginIfSameSite(
         url: string,
         alertMessage?: string,
         options: CoreUtilsOpenInBrowserOptions = {},
     ): Promise<void> {
-        await this.openWithAutoLoginIfSameSite(false, url, options, alertMessage);
+        return this.openInBrowserWithAutoLogin(url, alertMessage, options);
     }
 
     /**
@@ -1450,15 +1860,14 @@ export class CoreSite {
      * @param options Override default options passed to inappbrowser.
      * @param alertMessage If defined, an alert will be shown before opening the inappbrowser.
      * @return Promise resolved when done.
+     * @deprecated since 4.1. Use openInAppWithAutoLogin instead, now it always checks that URL belongs to same site.
      */
     async openInAppWithAutoLoginIfSameSite(
         url: string,
         options?: InAppBrowserOptions,
         alertMessage?: string,
     ): Promise<InAppBrowserObject> {
-        const iabInstance = <InAppBrowserObject> await this.openWithAutoLoginIfSameSite(true, url, options, alertMessage);
-
-        return iabInstance;
+        return this.openInAppWithAutoLogin(url, options, alertMessage);
     }
 
     /**
@@ -1477,7 +1886,7 @@ export class CoreSite {
         alertMessage?: string,
     ): Promise<InAppBrowserObject | void> {
         // Get the URL to open.
-        url = await this.getAutoLoginUrl(url);
+        const autoLoginUrl = await this.getAutoLoginUrl(url);
 
         if (alertMessage) {
             // Show an alert first.
@@ -1494,9 +1903,11 @@ export class CoreSite {
 
         // Open the URL.
         if (inApp) {
-            return CoreUtils.openInApp(url, options);
+            return CoreUtils.openInApp(autoLoginUrl, options);
         } else {
-            return CoreUtils.openInBrowser(url, options);
+            options.browserWarningUrl = url;
+
+            return CoreUtils.openInBrowser(autoLoginUrl, options);
         }
     }
 
@@ -1508,6 +1919,7 @@ export class CoreSite {
      * @param options Override default options passed to inappbrowser.
      * @param alertMessage If defined, an alert will be shown before opening the browser/inappbrowser.
      * @return Promise resolved when done. Resolve param is returned only if inApp=true.
+     * @deprecated since 4.1. Use openWithAutoLogin instead, now it always checks that URL belongs to same site.
      */
     async openWithAutoLoginIfSameSite(
         inApp: boolean,
@@ -1515,15 +1927,7 @@ export class CoreSite {
         options: InAppBrowserOptions & CoreUtilsOpenInBrowserOptions = {},
         alertMessage?: string,
     ): Promise<InAppBrowserObject | void> {
-        if (this.containsUrl(url)) {
-            return this.openWithAutoLogin(inApp, url, options, alertMessage);
-        } else {
-            if (inApp) {
-                return Promise.resolve(CoreUtils.openInApp(url, options));
-            } else {
-                CoreUtils.openInBrowser(url, options);
-            }
-        }
+        return this.openWithAutoLogin(inApp, url, options, alertMessage);
     }
 
     /**
@@ -1537,35 +1941,47 @@ export class CoreSite {
     getConfig(name?: undefined, ignoreCache?: boolean): Promise<CoreSiteConfig>;
     getConfig(name: string, ignoreCache?: boolean): Promise<string>;
     getConfig(name?: string, ignoreCache?: boolean): Promise<string | CoreSiteConfig> {
+        return firstValueFrom(
+            this.getConfigObservable(<string> name, ignoreCache ? CoreSitesReadingStrategy.ONLY_NETWORK : undefined),
+        );
+    }
+
+    /**
+     * Get the config of this site.
+     * It is recommended to use getStoredConfig instead since it's faster and doesn't use network.
+     *
+     * @param name Name of the setting to get. If not set or false, all settings will be returned.
+     * @param readingStrategy Reading strategy.
+     * @return Observable returning site config.
+     */
+    getConfigObservable(name?: undefined, readingStrategy?: CoreSitesReadingStrategy): WSObservable<CoreSiteConfig>;
+    getConfigObservable(name: string, readingStrategy?: CoreSitesReadingStrategy): WSObservable<string>;
+    getConfigObservable(name?: string, readingStrategy?: CoreSitesReadingStrategy): WSObservable<string | CoreSiteConfig> {
         const preSets: CoreSiteWSPreSets = {
             cacheKey: this.getConfigCacheKey(),
+            ...CoreSites.getReadingStrategyPreSets(readingStrategy),
         };
 
-        if (ignoreCache) {
-            preSets.getFromCache = false;
-            preSets.emergencyCache = false;
-        }
-
-        return this.read('tool_mobile_get_config', {}, preSets).then((config: CoreSiteConfigResponse) => {
+        return this.readObservable<CoreSiteConfigResponse>('tool_mobile_get_config', {}, preSets).pipe(map(config => {
             if (name) {
                 // Return the requested setting.
                 for (const x in config.settings) {
                     if (config.settings[x].name == name) {
-                        return config.settings[x].value;
+                        return String(config.settings[x].value);
                     }
                 }
 
                 throw new CoreError('Site config not found: ' + name);
             } else {
                 // Return all settings in the same array.
-                const settings = {};
+                const settings: CoreSiteConfig = {};
                 config.settings.forEach((setting) => {
-                    settings[setting.name] = setting.value;
+                    settings[setting.name] = String(setting.value);
                 });
 
                 return settings;
             }
-        });
+        }));
     }
 
     /**
@@ -1702,10 +2118,26 @@ export class CoreSite {
      * @return Promise resolved with the converted URL.
      */
     async getAutoLoginUrl(url: string, showModal: boolean = true): Promise<string> {
-        if (!this.privateToken || (this.lastAutoLogin &&
-                CoreTimeUtils.timestamp() - this.lastAutoLogin < CoreConstants.SECONDS_MINUTE * 6)) {
-            // No private token, WS not available or last auto-login was less than 6 minutes ago. Don't change the URL.
+        if (!this.privateToken) {
+            // No private token, don't change the URL.
             return url;
+        }
+
+        if (!this.containsUrl(url)) {
+            // URL doesn't belong to the site, don't auto login.
+            return url;
+        }
+
+        if (this.lastAutoLogin > 0) {
+            const timeBetweenRequests = await CoreUtils.ignoreErrors(
+                this.getConfig('tool_mobile_autologinmintimebetweenreq'),
+                CoreConstants.SECONDS_MINUTE * 6,
+            );
+
+            if (CoreTimeUtils.timestamp() - this.lastAutoLogin < timeBetweenRequests) {
+                // Not enough time has passed since last auto login.
+                return url;
+            }
         }
 
         const userId = this.getUserId();
@@ -1817,7 +2249,7 @@ export class CoreSite {
      * @return Promise resolved when done.
      */
     async deleteSiteConfig(name: string): Promise<void> {
-        await this.getDb().deleteRecords(CoreSite.CONFIG_TABLE, { name });
+        await this.configTable.deleteByPrimaryKey({ name });
     }
 
     /**
@@ -1829,7 +2261,7 @@ export class CoreSite {
      */
     async getLocalSiteConfig<T extends number | string>(name: string, defaultValue?: T): Promise<T> {
         try {
-            const entry = await this.getDb().getRecord<CoreSiteConfigDBRecord>(CoreSite.CONFIG_TABLE, { name });
+            const entry = await this.configTable.getOneByPrimaryKey({ name });
 
             return <T> entry.value;
         } catch (error) {
@@ -1849,7 +2281,7 @@ export class CoreSite {
      * @return Promise resolved when done.
      */
     async setLocalSiteConfig(name: string, value: number | string): Promise<void> {
-        await this.getDb().insertRecord(CoreSite.CONFIG_TABLE, { name, value });
+        await this.configTable.insert({ name, value });
     }
 
     /**
@@ -1862,7 +2294,7 @@ export class CoreSite {
         updateFrequency = updateFrequency || CoreSite.FREQUENCY_USUALLY;
         let expirationDelay = this.UPDATE_FREQUENCIES[updateFrequency] || this.UPDATE_FREQUENCIES[CoreSite.FREQUENCY_USUALLY];
 
-        if (CoreApp.isNetworkAccessLimited()) {
+        if (CoreNetwork.isNetworkAccessLimited()) {
             // Not WiFi, increase the expiration delay a 50% to decrease the data usage in this case.
             expirationDelay *= 1.5;
         }
@@ -1886,7 +2318,7 @@ export class CoreSite {
         } else if (this.tokenPluginFileWorksPromise) {
             // Check ongoing, use the same promise.
             return this.tokenPluginFileWorksPromise;
-        } else if (!CoreApp.isOnline()) {
+        } else if (!CoreNetwork.isOnline()) {
             // Not online, cannot check it. Assume it's working, but don't save the result.
             return Promise.resolve(true);
         }
@@ -1931,6 +2363,147 @@ export class CoreSite {
         return this.containsUrl(url);
     }
 
+    /**
+     * Deletes last viewed records based on some conditions.
+     *
+     * @param conditions Conditions.
+     * @return Promise resolved when done.
+     */
+    async deleteLastViewed(conditions?: Partial<CoreSiteLastViewedDBRecord>): Promise<void> {
+        await this.lastViewedTable.delete(conditions);
+    }
+
+    /**
+     * Get a last viewed record for a component+id.
+     *
+     * @param component The component.
+     * @param id ID.
+     * @return Resolves with last viewed record, undefined if not found.
+     */
+    async getLastViewed(component: string, id: number): Promise<CoreSiteLastViewedDBRecord | undefined> {
+        try {
+            return await this.lastViewedTable.getOneByPrimaryKey({ component, id });
+        } catch {
+            // Not found.
+        }
+    }
+
+    /**
+     * Get several last viewed for a certain component.
+     *
+     * @param component The component.
+     * @param ids IDs. If not provided or empty, return all last viewed for a component.
+     * @return Resolves with last viewed records, undefined if error.
+     */
+    async getComponentLastViewed(component: string, ids: number[] = []): Promise<CoreSiteLastViewedDBRecord[] | undefined> {
+        try {
+            if (!ids.length) {
+                return await this.lastViewedTable.getMany({ component });
+            }
+
+            const whereAndParams = SQLiteDB.getInOrEqual(ids);
+
+            whereAndParams.sql = 'id ' + whereAndParams.sql + ' AND component = ?';
+            whereAndParams.params.push(component);
+
+            return await this.lastViewedTable.getManyWhere({
+                sql: whereAndParams.sql,
+                sqlParams: whereAndParams.params,
+                js: (record) => record.component === component && ids.includes(record.id),
+            });
+        } catch {
+            // Not found.
+        }
+    }
+
+    /**
+     * Store a last viewed record.
+     *
+     * @param component The component.
+     * @param id ID.
+     * @param value Last viewed item value.
+     * @param options Options.
+     * @return Promise resolved when done.
+     */
+    async storeLastViewed(
+        component: string,
+        id: number,
+        value: string | number,
+        options: CoreSiteStoreLastViewedOptions = {},
+    ): Promise<void> {
+        await this.lastViewedTable.insert({
+            component,
+            id,
+            value: String(value),
+            data: options.data,
+            timeaccess: options.timeaccess ?? Date.now(),
+        });
+    }
+
+}
+
+/**
+ * Operator to chain requests when using observables.
+ *
+ * @param readingStrategy Reading strategy used for the current request.
+ * @param callback Callback called with the result of current request and the reading strategy to use in next requests.
+ * @return Operator.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function chainRequests<T, O extends ObservableInput<any>>(
+    readingStrategy: CoreSitesReadingStrategy | undefined,
+    callback: (data: T, readingStrategy?: CoreSitesReadingStrategy) => O,
+): OperatorFunction<T, ObservedValueOf<O>> {
+    return (source: WSObservable<T>) => new Observable<{ data: T; readingStrategy?: CoreSitesReadingStrategy }>(subscriber => {
+        let firstValue = true;
+        let isCompleted = false;
+
+        return source.subscribe({
+            next: async (value) => {
+                if (readingStrategy !== CoreSitesReadingStrategy.STALE_WHILE_REVALIDATE) {
+                    // Just use same strategy.
+                    subscriber.next({ data: value, readingStrategy });
+
+                    return;
+                }
+
+                if (!firstValue) {
+                    // Second (last) value. Chained requests should have used cached data already, just return 1 value now.
+                    subscriber.next({
+                        data: value,
+                    });
+
+                    return;
+                }
+
+                firstValue = false;
+
+                // Wait to see if the observable is completed (no more values).
+                await CoreUtils.nextTick();
+
+                if (isCompleted) {
+                    // Current request only returns cached data. Let chained requests update in background.
+                    subscriber.next({ data: value, readingStrategy });
+                } else {
+                    // Current request will update in background. Prefer cached data in the chained requests.
+                    subscriber.next({
+                        data: value,
+                        readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
+                    });
+                }
+            },
+            error: (error) => subscriber.error(error),
+            complete: async () => {
+                isCompleted = true;
+
+                await CoreUtils.nextTick();
+
+                subscriber.complete();
+            },
+        });
+    }).pipe(
+        mergeMap(({ data, readingStrategy }) => callback(data, readingStrategy)),
+    );
 }
 
 /**
@@ -2051,6 +2624,12 @@ export type CoreSiteWSPreSets = {
      * can cause the request to fail (see PHP's max_input_vars).
      */
     splitRequest?: CoreWSPreSetsSplitRequest;
+
+    /**
+     * If true, the app will return cached data even if it's expired and then it'll call the WS in the background.
+     * Only enabled if CoreConstants.CONFIG.disableCallWSInBackground isn't true.
+     */
+    updateInBackground?: boolean;
 };
 
 /**
@@ -2090,7 +2669,7 @@ type RequestQueueItem<T = any> = {
     data: any; // eslint-disable-line @typescript-eslint/no-explicit-any
     preSets: CoreSiteWSPreSets;
     wsPreSets: CoreWSPreSets;
-    deferred: PromiseDefer<T>;
+    deferred: CorePromisedValue<T>;
 };
 
 /**
@@ -2150,7 +2729,7 @@ export enum CoreSiteInfoUserHomepage {
     HOMEPAGE_SITE = 0, // Site home.
     HOMEPAGE_MY = 1, // Dashboard.
     HOMEPAGE_MYCOURSES = 3, // My courses.
-};
+}
 
 /**
  * Result of WS tool_mobile_get_config.
@@ -2158,7 +2737,7 @@ export enum CoreSiteInfoUserHomepage {
 export type CoreSiteConfigResponse = {
     settings: { // Settings.
         name: string; // The name of the setting.
-        value: string; // The value of the setting.
+        value: string | number; // The value of the setting.
     }[];
     warnings?: CoreWSExternalWarning[];
 };
@@ -2244,16 +2823,43 @@ export type CoreSiteCallExternalFunctionsResult = {
     }[];
 };
 
-export type CoreSiteConfigDBRecord = {
-    name: string;
-    value: string | number;
+/**
+ * Options for storeLastViewed.
+ */
+export type CoreSiteStoreLastViewedOptions = {
+    data?: string; // Other data.
+    timeaccess?: number; // Accessed time. If not set, current time.
 };
 
-export type CoreSiteWSCacheRecord = {
-    id: string;
-    data: string;
-    expirationTime: number;
-    key?: string;
-    component?: string;
-    componentId?: number;
+/**
+ * Info about cached data.
+ */
+type WSCachedData<T> = {
+    response: T | WSCachedError; // The WS response data, or an error if the WS returned an error and it was cached.
+    expirationIgnored: boolean; // Whether the expiration time was ignored.
+    expirationTime?: number; // Entry expiration time (only if not ignored).
 };
+
+/**
+ * Error data stored in cache.
+ */
+type WSCachedError = {
+    exception?: string;
+    errorcode?: string;
+};
+
+/**
+ * Observable returned when calling WebServices.
+ * If the request uses the "update in background" feature, it will return 2 values: first the cached one, and then the one
+ * coming from the server. After this, it will complete.
+ * Otherwise, it will only return 1 value, either coming from cache or from the server. After this, it will complete.
+ */
+export type WSObservable<T> = Observable<T>;
+
+/**
+ * Type of ongoing requests stored in memory to avoid duplicating them.
+ */
+enum OngoingRequestType {
+    STANDARD = 0,
+    UPDATE_IN_BACKGROUND = 1,
+}

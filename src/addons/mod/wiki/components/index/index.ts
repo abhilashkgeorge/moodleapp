@@ -21,14 +21,16 @@ import { CoreCourse } from '@features/course/services/course';
 import { CoreTag, CoreTagItem } from '@features/tag/services/tag';
 import { CoreUser } from '@features/user/services/user';
 import { IonContent } from '@ionic/angular';
+import { CoreNetwork } from '@services/network';
 import { CoreGroup, CoreGroups } from '@services/groups';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
-import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
-import { Translate } from '@singletons';
+import { Translate, NgZone } from '@singletons';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
+import { CoreText } from '@singletons/text';
+import { Subscription } from 'rxjs';
 import { Md5 } from 'ts-md5';
 import { AddonModWikiPageDBRecord } from '../../services/database/wiki';
 import { AddonModWikiModuleHandlerService } from '../../services/handlers/module';
@@ -76,6 +78,8 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
     moduleName = 'wiki';
     groupWiki = false;
 
+    isOnline = false;
+
     wiki?: AddonModWikiWiki; // The wiki instance.
     isMainPage = false; // Whether the user is viewing wiki's main page (just entered the wiki).
     canEdit = false; // Whether user can edit the page.
@@ -104,12 +108,23 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
     protected ignoreManualSyncEvent = false; // Whether manual sync event should be ignored.
     protected currentUserId?: number; // Current user ID.
     protected currentPath!: string;
+    protected onlineSubscription: Subscription; // It will observe the status of the network connection.
 
     constructor(
         protected content?: IonContent,
         @Optional() courseContentsPage?: CoreCourseContentsPage,
     ) {
         super('AddonModLessonIndexComponent', content, courseContentsPage);
+
+        this.isOnline = CoreNetwork.isOnline();
+
+        // Refresh online status when changes.
+        this.onlineSubscription = CoreNetwork.onChange().subscribe(() => {
+            // Execute the callback in the Angular zone, so change detection doesn't stop working.
+            NgZone.run(() => {
+                this.isOnline = CoreNetwork.isOnline();
+            });
+        });
     }
 
     /**
@@ -132,24 +147,6 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             if (this.action == 'map') {
                 this.openMap();
             }
-        }
-
-        if (!this.wiki) {
-            CoreNavigator.back();
-
-            return;
-        }
-
-        if (!this.pageId) {
-            try {
-                await AddonModWiki.logView(this.wiki.id, this.wiki.name);
-
-                CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
-            } catch {
-                // Ignore errors.
-            }
-        } else {
-            CoreUtils.ignoreErrors(AddonModWiki.logPageView(this.pageId, this.wiki.id, this.wiki.name));
         }
     }
 
@@ -212,7 +209,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh = false, sync = false, showErrors = false): Promise<void> {
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
         try {
             // Get the wiki instance.
             this.wiki = await AddonModWiki.getWiki(this.courseId, this.module.id);
@@ -240,7 +237,6 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             }
 
             this.description = this.wiki.intro || this.module.description;
-            this.externalUrl = this.module.url;
             this.componentId = this.module.id;
 
             await this.fetchSubwikis(this.wiki.id);
@@ -252,6 +248,10 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                 // Not found in cache, create a new one.
                 // Get real groupmode, in case it's forced by the course.
                 const groupInfo = await CoreGroups.getActivityGroupInfo(this.wiki.coursemodule);
+
+                if (groupInfo.separateGroups && !groupInfo.groups.length) {
+                    throw new CoreError(Translate.instant('addon.mod_wiki.cannotviewpage'));
+                }
 
                 await this.createSubwikiList(groupInfo.groups);
             } else {
@@ -278,8 +278,6 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             }
 
             throw error;
-        } finally {
-            this.fillContextMenu(refresh);
         }
     }
 
@@ -434,6 +432,32 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
             this.canEdit = !!pageContents.caneditpage;
             this.currentPageObj = pageContents;
             this.tags = ('tags' in pageContents && pageContents.tags) || [];
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async logActivity(): Promise<void> {
+        if (!this.wiki) {
+            return; // Shouldn't happen.
+        }
+
+        if (!this.pageId) {
+            await AddonModWiki.logView(this.wiki.id, this.wiki.name);
+        } else {
+            this.checkCompletionAfterLog = false;
+            CoreUtils.ignoreErrors(AddonModWiki.logPageView(this.pageId, this.wiki.id, this.wiki.name));
+        }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async storeModuleViewed(): Promise<void> {
+        // Only store module viewed when viewing the main page.
+        if (!this.pageId) {
+            await super.storeModuleViewed();
         }
     }
 
@@ -666,7 +690,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
         content = content.trim();
 
         if (content.length > 0) {
-            const editUrl = CoreTextUtils.concatenatePaths(CoreSites.getRequiredCurrentSite().getURL(), '/mod/wiki/edit.php');
+            const editUrl = CoreText.concatenatePaths(CoreSites.getRequiredCurrentSite().getURL(), '/mod/wiki/edit.php');
             content = content.replace(/href="edit\.php/g, 'href="' + editUrl);
         }
 
@@ -835,6 +859,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
 
         this.manualSyncObserver?.off();
         this.newPageObserver?.off();
+        this.onlineSubscription.unsubscribe();
         if (this.wiki) {
             AddonModWiki.wikiPageClosed(this.wiki.id, this.currentPath);
         }
@@ -846,7 +871,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
      * @param userGroups Groups.
      * @return Promise resolved when done.
      */
-    protected async createSubwikiList(userGroups?: CoreGroup[]): Promise<void> {
+    protected async createSubwikiList(userGroups: CoreGroup[]): Promise<void> {
         const subwikiList: AddonModWikiSubwikiListSubwiki[] = [];
         let allParticipants = false;
         let showMyGroupsLabel = false;
@@ -874,7 +899,7 @@ export class AddonModWikiIndexComponent extends CoreCourseModuleMainActivityComp
                     allParticipants = true;
                 }
             } else {
-                if (subwiki.groupid != 0 && userGroups && userGroups.length > 0) {
+                if (subwiki.groupid != 0 && userGroups.length > 0) {
                     // Get groupLabel if it has groupId.
                     const group = userGroups.find(group => group.id == subwiki.groupid);
                     groupLabel = group?.name || '';

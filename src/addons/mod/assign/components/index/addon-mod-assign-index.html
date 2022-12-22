@@ -1,57 +1,34 @@
 <!-- Buttons to add to the header. -->
 <core-navbar-buttons slot="end">
-    <core-context-menu>
-        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate" [href]="externalUrl"
-            iconAction="fas-external-link-alt" [showBrowserWarning]="false">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="assign && (description || (assign.introattachments && assign.introattachments.length))"
-            [priority]="800" [content]="'core.moduleintro' | translate" (action)="expandDescription()" iconAction="fas-arrow-right">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}" iconAction="far-newspaper"
-            (action)="gotoBlog()">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="loaded && !hasOffline && isOnline" [priority]="700" [content]="'core.refresh' | translate"
-            (action)="doRefresh(null, $event)" [iconAction]="refreshIcon" [closeOnClick]="false">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="loaded && hasOffline && isOnline" [priority]="600"
-            [content]="'core.settings.synchronizenow' | translate" (action)="doRefresh(null, $event, true)" [iconAction]="syncIcon"
-            [closeOnClick]="false">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="prefetchStatusIcon" [priority]="500" [content]="prefetchText" (action)="prefetch($event)"
-            [iconAction]="prefetchStatusIcon" [closeOnClick]="false">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="size" [priority]="400" [content]="'core.clearstoreddata' | translate:{$a: size}"
-            iconDescription="fas-archive" (action)="removeFiles($event)" iconAction="fas-trash" [closeOnClick]="false">
-        </core-context-menu-item>
-    </core-context-menu>
+    <ion-button fill="clear" (click)="openModuleSummary()" aria-haspopup="true" [attr.aria-label]="'core.info' | translate">
+        <ion-icon name="fas-info-circle" slot="icon-only" aria-hidden="true"></ion-icon>
+    </ion-button>
 </core-navbar-buttons>
 
 <!-- Content. -->
-<core-loading [hideUntil]="loaded">
+<core-loading [hideUntil]="!showLoading">
 
     <!-- Activity info. -->
     <core-course-module-info [module]="module" [description]="description" [component]="component" [componentId]="componentId"
-        [courseId]="courseId" [hasDataToSync]="hasOffline">
-        <ion-list inset="true" description *ngIf="assign && assign.introattachments && assign.introattachments.length">
+        [courseId]="courseId" [hasDataToSync]="hasOffline" (completionChanged)="onCompletionChange()">
+        <div description *ngIf="assign && assign.introattachments?.length && !assign.submissionattachments">
             <core-file *ngFor="let file of assign.introattachments" [file]="file" [component]="component" [componentId]="componentId">
             </core-file>
-        </ion-list>
+        </div>
     </core-course-module-info>
 
     <!-- User can view all submissions (teacher). -->
     <ng-container *ngIf="assign && canViewAllSubmissions">
         <ion-list class="core-list-align-detail-right">
-            <ion-item class="ion-text-wrap" *ngIf="(groupInfo.separateGroups || groupInfo.visibleGroups)">
-                <ion-label id="addon-assign-groupslabel">
-                    <ng-container *ngIf="groupInfo.separateGroups">{{'core.groupsseparate' | translate }}</ng-container>
-                    <ng-container *ngIf="groupInfo.visibleGroups">{{'core.groupsvisible' | translate }}</ng-container>
+
+            <core-group-selector [groupInfo]="groupInfo" [(selected)]="group" (selectedChange)="setGroup(group)"></core-group-selector>
+
+            <ion-item class="ion-text-wrap">
+                <ion-label>
+                    <h2>{{ 'core.course.hiddenfromstudents' | translate }}</h2>
+                    <p *ngIf="module.visible">{{ 'core.no' | translate }}</p>
+                    <p *ngIf="!module.visible">{{ 'core.yes' | translate }}</p>
                 </ion-label>
-                <ion-select [(ngModel)]="group" (ionChange)="setGroup(group)" aria-labelledby="addon-assign-groupslabel"
-                    interface="action-sheet" [interfaceOptions]="{header: 'core.group' | translate}">
-                    <ion-select-option *ngFor="let groupOpt of groupInfo.groups" [value]="groupOpt.id">
-                        {{groupOpt.name}}
-                    </ion-select-option>
-                </ion-select>
             </ion-item>
 
             <ion-item class="ion-text-wrap" *ngIf="timeRemaining">
@@ -86,7 +63,7 @@
 
             <!-- Summary of submissions with draft status. -->
             <ion-item class="ion-text-wrap" *ngIf="assign.submissiondrafts && summary && summary.submissionsenabled"
-                [class.hide-detail]="!summary.submissiondraftscount" detail="true" [button]="summary.submissiondraftscount"
+                [detail]="summary.submissiondraftscount" [button]="summary.submissiondraftscount"
                 (click)="goToSubmissionList(submissionStatusDraft, !!summary.submissiondraftscount)">
                 <ion-label>
                     <h2>{{ 'addon.mod_assign.numberofdraftsubmissions' | translate }}</h2>
@@ -101,8 +78,8 @@
             </ion-item>
 
             <!-- Summary of submissions with submitted status. -->
-            <ion-item class="ion-text-wrap" *ngIf="summary && summary.submissionsenabled"
-                [class.hide-detail]="!summary.submissionssubmittedcount" detail="true" [button]="summary.submissionssubmittedcount"
+            <ion-item class="ion-text-wrap" *ngIf="summary && summary.submissionsenabled" [detail]="summary.submissionssubmittedcount"
+                [button]="summary.submissionssubmittedcount"
                 (click)="goToSubmissionList(submissionStatusSubmitted, !!summary.submissionssubmittedcount)">
                 <ion-label>
                     <h2>{{ 'addon.mod_assign.numberofsubmittedassignments' | translate }}</h2>
@@ -118,7 +95,7 @@
 
             <!-- Summary of submissions that need grading. -->
             <ion-item class="ion-text-wrap" *ngIf="summary && summary.submissionsenabled && !assign.teamsubmission"
-                [class.hide-detail]="!needsGradingAvailable" detail="true" [button]="needsGradingAvailable"
+                [detail]="needsGradingAvailable" [button]="needsGradingAvailable"
                 (click)="goToSubmissionList(needGrading, needsGradingAvailable)">
                 <ion-label>
                     <h2>{{ 'addon.mod_assign.numberofsubmissionsneedgrading' | translate }}</h2>
@@ -140,13 +117,15 @@
                 <ion-label>{{ 'addon.mod_assign.'+summary.warnofungroupedusers | translate }}</ion-label>
             </ion-item>
         </ion-card>
+
+        <div collapsible-footer *ngIf="!showLoading" slot="fixed">
+            <core-course-module-navigation [courseId]="courseId" [currentModuleId]="module.id">
+            </core-course-module-navigation>
+        </div>
     </ng-container>
 
     <!-- If it's a student, display his submission. -->
-    <addon-mod-assign-submission *ngIf="loaded && !canViewAllSubmissions && canViewOwnSubmission" [courseId]="courseId"
+    <addon-mod-assign-submission *ngIf="!showLoading && !canViewAllSubmissions && canViewOwnSubmission" [courseId]="courseId"
         [moduleId]="module.id">
     </addon-mod-assign-submission>
 </core-loading>
-
-<core-course-module-navigation [hidden]="!loaded" [courseId]="courseId" [currentModule]="module" (completionChanged)="onCompletionChange()">
-</core-course-module-navigation>

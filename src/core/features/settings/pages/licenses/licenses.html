@@ -9,7 +9,7 @@
         </ion-title>
     </ion-toolbar>
 </ion-header>
-<ion-content>
+<ion-content class="limited-width">
     <core-loading [hideUntil]="loaded">
         <ion-searchbar [(ngModel)]="textFilter" (ionInput)="filterChanged($event.target)" (ionCancel)="filterChanged($event.target)"
             [placeholder]="'core.filter' | translate">

@@ -25,17 +25,16 @@ import {
 } from '@angular/core';
 import { CoreApp } from '@services/app';
 import { CoreFile } from '@services/file';
-import { CoreFilepool } from '@services/filepool';
+import { CoreFilepool, CoreFilepoolFileActions, CoreFilepoolFileEventData } from '@services/filepool';
 import { CoreSites } from '@services/sites';
-import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUrlUtils } from '@services/utils/url';
 import { CoreUtils } from '@services/utils/utils';
-import { Platform } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreError } from '@classes/errors/error';
 import { CoreSite } from '@classes/site';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreConstants } from '../constants';
+import { CoreNetwork } from '@services/network';
 
 /**
  * Directive to handle external content.
@@ -271,7 +270,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
         urls = CoreUtils.uniqueArray(urls); // Remove duplicates.
 
         const promises = urls.map(async (url) => {
-            const finalUrl = await CoreFilepool.getUrlByUrl(siteId, url, this.component, this.componentId, 0, true, true);
+            const finalUrl = await CoreFilepool.getSrcByUrl(siteId, url, this.component, this.componentId, 0, true, true);
 
             this.logger.debug('Using URL ' + finalUrl + ' for ' + url + ' in inline styles');
             inlineStyles = inlineStyles.replace(new RegExp(url, 'gi'), finalUrl);
@@ -305,12 +304,10 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
                         return;
                     }
 
-                    const line = Platform.is('tablet') || CoreApp.isAndroid() ? 90 : 80;
                     // Position all subtitles to a percentage of video height.
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    Array.from(track.cues).forEach((cue: any) => {
+                    Array.from(track.cues).forEach((cue: VTTCue) => {
                         cue.snapToLines = false;
-                        cue.line = line;
+                        cue.line = 90;
                         cue.size = 100; // This solves some Android issue.
                     });
                     // Delete listener.
@@ -395,7 +392,12 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
         // Listen for download changes in the file.
         const eventName = await CoreFilepool.getFileEventNameByUrl(site.getId(), url);
 
-        this.fileEventObserver = CoreEvents.on(eventName, async () => {
+        this.fileEventObserver = CoreEvents.on(eventName, async (data: CoreFilepoolFileEventData) => {
+            if (data.action === CoreFilepoolFileActions.DOWNLOAD && !data.success) {
+                // Error downloading the file. Don't try again.
+                return;
+            }
+
             const newState = await CoreFilepool.getFileStateByUrl(site.getId(), url);
             if (newState === state) {
                 return;
@@ -413,19 +415,20 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
         // Set events to download big files (not downloaded automatically).
         if (targetAttr !== 'poster' && (tagName === 'VIDEO' || tagName === 'AUDIO' || tagName === 'A' || tagName === 'SOURCE')) {
             const eventName = tagName == 'A' ? 'click' : 'play';
-            let clickableEl = this.element;
+            let clickableEl: Element | null = this.element;
 
             if (tagName == 'SOURCE') {
-                clickableEl = <HTMLElement> CoreDomUtils.closest(this.element, 'video,audio');
-                if (!clickableEl) {
-                    return;
-                }
+                clickableEl = this.element.closest('video,audio');
+            }
+
+            if (!clickableEl) {
+                return;
             }
 
             clickableEl.addEventListener(eventName, () => {
                 // User played media or opened a downloadable link.
                 // Download the file if in wifi and it hasn't been downloaded already (for big files).
-                if (state !== CoreConstants.DOWNLOADED && state !== CoreConstants.DOWNLOADING && CoreApp.isWifi()) {
+                if (state !== CoreConstants.DOWNLOADED && state !== CoreConstants.DOWNLOADING && CoreNetwork.isWifi()) {
                     // We aren't using the result, so it doesn't matter which of the 2 functions we call.
                     CoreFilepool.getUrlByUrl(site.getId(), url, this.component, this.componentId, 0, false);
                 }

@@ -24,14 +24,15 @@ import { CoreRatingSyncProvider } from '@features/rating/services/rating-sync';
 import { CoreUser } from '@features/user/services/user';
 import { CanLeave } from '@guards/can-leave';
 import { IonContent, IonRefresher } from '@ionic/angular';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreNavigator } from '@services/navigator';
 import { CoreScreen } from '@services/screen';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
-import { Network, NgZone, Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { CoreArray } from '@singletons/array';
+import { CoreDom } from '@singletons/dom';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import { AddonModForumDiscussionsSource } from '../../classes/forum-discussions-source';
@@ -74,7 +75,7 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
     discussion?: AddonModForumDiscussion;
     discussions?: AddonModForumDiscussionDiscussionsSwipeManager;
     startingPost?: Post;
-    posts!: Post[];
+    posts: Post[] = [];
     discussionLoaded = false;
     postSubjects!: { [id: string]: string };
     isOnline!: boolean;
@@ -104,7 +105,9 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
     cmId?: number;
     canPin = false;
     availabilityMessage: string | null = null;
+    showQAMessage = false;
     leavingPage = false;
+    externalUrl?: string;
 
     protected forumId?: number;
     protected postId?: number;
@@ -161,11 +164,12 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
             return;
         }
 
-        this.isOnline = CoreApp.isOnline();
-        this.onlineObserver = Network.onChange().subscribe(() => {
+        this.isOnline = CoreNetwork.isOnline();
+        this.externalUrl = CoreSites.getCurrentSite()?.createSiteUrl('/mod/forum/discuss.php', { d: this.discussionId.toString() });
+        this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
+                this.isOnline = CoreNetwork.isOnline();
             });
         });
 
@@ -185,13 +189,10 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
         const scrollTo = this.postId || this.parent;
         if (scrollTo) {
             // Scroll to the post.
-            setTimeout(() => {
-                CoreDomUtils.scrollToElementBySelector(
-                    this.elementRef.nativeElement,
-                    this.content,
-                    '#addon-mod_forum-post-' + scrollTo,
-                );
-            });
+            CoreDom.scrollToElement(
+                this.elementRef.nativeElement,
+                '#addon-mod_forum-post-' + scrollTo,
+            );
         }
     }
 
@@ -357,7 +358,7 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
                         // Not set, use default sort.
                         // @TODO add fallback to $CFG->forum_displaymode.
                 }
-            } catch (error) {
+            } catch {
                 // Ignore errors.
             }
         }
@@ -495,6 +496,11 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
                                 });
                             }
 
+                            // Show Q&A message if user hasn't posted.
+                            const currentUserId = CoreSites.getCurrentSiteUserId();
+                            this.showQAMessage = forum.type === 'qanda' && !accessInfo.canviewqandawithoutposting &&
+                                !posts.some(post => post.author.id === currentUserId);
+
                             return;
                         }),
                 );
@@ -505,7 +511,7 @@ export class AddonModForumDiscussionPage implements OnInit, AfterViewInit, OnDes
                 }
 
                 await Promise.all(promises);
-            } catch (error) {
+            } catch {
                 // Ignore errors.
             }
 

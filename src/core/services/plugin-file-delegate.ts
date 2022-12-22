@@ -29,8 +29,6 @@ import { CoreFileHelper } from './file-helper';
 @Injectable({ providedIn: 'root' })
 export class CorePluginFileDelegateService extends CoreDelegate<CorePluginFileHandler> {
 
-    protected handlerNameProperty = 'component';
-
     constructor() {
         super('CorePluginFileDelegate', true);
     }
@@ -202,10 +200,8 @@ export class CorePluginFileDelegateService extends CoreDelegate<CorePluginFileHa
 
         if (handler && handler.getFileSize) {
             try {
-                const size = handler.getFileSize(downloadableFile, siteId);
-
-                return size;
-            } catch (error) {
+                return await handler.getFileSize(downloadableFile, siteId);
+            } catch {
                 // Ignore errors.
             }
         }

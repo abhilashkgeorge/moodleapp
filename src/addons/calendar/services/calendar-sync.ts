@@ -14,7 +14,7 @@
 
 import { Injectable } from '@angular/core';
 import { CoreSyncBaseProvider, CoreSyncBlockedError } from '@classes/base-sync';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
@@ -29,7 +29,7 @@ import { AddonCalendarHelper } from './calendar-helper';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreSync } from '@services/sync';
 import { CoreNetworkError } from '@classes/errors/network-error';
-import moment from 'moment';
+import moment from 'moment-timezone';
 
 /**
  * Service to sync calendar.
@@ -55,7 +55,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     async syncAllEvents(siteId?: string, force = false): Promise<void> {
-        await this.syncOnSites('all calendar events', this.syncAllEventsFunc.bind(this, force), siteId);
+        await this.syncOnSites('all calendar events', (siteId) => this.syncAllEventsFunc(force, siteId), siteId);
     }
 
     /**
@@ -134,7 +134,7 @@ export class AddonCalendarSyncProvider extends CoreSyncBaseProvider<AddonCalenda
         const eventIds: number[] = await CoreUtils.ignoreErrors(AddonCalendarOffline.getAllEventsIds(siteId), []);
 
         if (eventIds.length > 0) {
-            if (!CoreApp.isOnline()) {
+            if (!CoreNetwork.isOnline()) {
                 // Cannot sync in offline.
                 throw new CoreNetworkError();
             }

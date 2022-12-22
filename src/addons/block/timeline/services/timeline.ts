@@ -22,7 +22,7 @@ import {
     AddonCalendarGetActionEventsByTimesortWSParams,
     AddonCalendarGetActionEventsByCoursesWSParams,
 } from '@addons/calendar/services/calendar';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { makeSingleton } from '@singletons';
 import { CoreSiteWSPreSets } from '@classes/site';
 
@@ -55,7 +55,7 @@ export class AddonBlockTimelineProvider {
     ): Promise<{ events: AddonCalendarEvent[]; canLoadMore?: number }> {
         const site = await CoreSites.getSite(siteId);
 
-        const time = moment().subtract(14, 'days').unix(); // Check two weeks ago.
+        const time = this.getDayStart(-14); // Check two weeks ago.
 
         const data: AddonCalendarGetActionEventsByCourseWSParams = {
             timesortfrom: time,
@@ -107,9 +107,13 @@ export class AddonBlockTimelineProvider {
         searchValue = '',
         siteId?: string,
     ): Promise<{[courseId: string]: { events: AddonCalendarEvent[]; canLoadMore?: number } }> {
+        if (courseIds.length === 0) {
+            return {};
+        }
+
         const site = await CoreSites.getSite(siteId);
 
-        const time = moment().subtract(14, 'days').unix(); // Check two weeks ago.
+        const time = this.getDayStart(-14); // Check two weeks ago.
 
         const data: AddonCalendarGetActionEventsByCoursesWSParams = {
             timesortfrom: time,
@@ -164,7 +168,7 @@ export class AddonBlockTimelineProvider {
     ): Promise<{ events: AddonCalendarEvent[]; canLoadMore?: number }> {
         const site = await CoreSites.getSite(siteId);
 
-        const timesortfrom = moment().subtract(14, 'days').unix(); // Check two weeks ago.
+        const timesortfrom = this.getDayStart(-14); // Check two weeks ago.
         const limitnum = AddonBlockTimelineProvider.EVENTS_LIMIT;
 
         const data: AddonCalendarGetActionEventsByTimesortWSParams = {
@@ -273,6 +277,16 @@ export class AddonBlockTimelineProvider {
             events: course.events,
             canLoadMore,
         };
+    }
+
+    /**
+     * Returns the timestamp at the start of the day with an optional offset.
+     *
+     * @param daysOffset Offset days to add or substract.
+     * @return timestamp.
+     */
+    getDayStart(daysOffset = 0): number {
+        return moment().startOf('day').add(daysOffset, 'days').unix();
     }
 
 }

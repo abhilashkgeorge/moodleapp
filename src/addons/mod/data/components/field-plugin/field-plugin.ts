@@ -16,6 +16,7 @@ import { Component, OnInit, OnChanges, ViewChild, Input, Output, SimpleChange, T
 import { FormGroup } from '@angular/forms';
 import { CoreDynamicComponent } from '@components/dynamic-component/dynamic-component';
 import { CoreFormFields } from '@singletons/form';
+import { AddonModDataEntryFieldInitialized, AddonModDataFieldPluginBaseComponent } from '../../classes/base-field-plugin-component';
 import { AddonModDataData, AddonModDataField, AddonModDataTemplateMode } from '../../services/data';
 import { AddonModDataFieldsDelegate } from '../../services/data-fields-delegate';
 
@@ -28,7 +29,7 @@ import { AddonModDataFieldsDelegate } from '../../services/data-fields-delegate'
 })
 export class AddonModDataFieldPluginComponent implements OnInit, OnChanges {
 
-    @ViewChild(CoreDynamicComponent) dynamicComponent?: CoreDynamicComponent;
+    @ViewChild(CoreDynamicComponent) dynamicComponent?: CoreDynamicComponent<AddonModDataFieldPluginBaseComponent>;
 
     @Input() mode!: AddonModDataTemplateMode; // The render mode.
     @Input() field!: AddonModDataField; // The field to render.
@@ -37,9 +38,11 @@ export class AddonModDataFieldPluginComponent implements OnInit, OnChanges {
     @Input() error?: string; // Error when editing.
     @Input() form?: FormGroup; // Form where to add the form control. Just required for edit and search modes.
     @Input() searchFields?: CoreFormFields; // The search value of all fields.
-    @Output() gotoEntry = new EventEmitter(); // Action to perform.
+    @Output() gotoEntry = new EventEmitter<number>(); // Action to perform.
+    // Output called when the field is initialized with a value and it didn't have one already.
+    @Output() onFieldInit = new EventEmitter<AddonModDataEntryFieldInitialized>();
 
-    fieldComponent?: Type<unknown>; // Component to render the plugin.
+    fieldComponent?: Type<AddonModDataFieldPluginBaseComponent>; // Component to render the plugin.
     pluginData?: AddonDataFieldPluginComponentData; // Data to pass to the component.
     fieldLoaded = false;
 
@@ -65,9 +68,10 @@ export class AddonModDataFieldPluginComponent implements OnInit, OnChanges {
                     value: this.value,
                     database: this.database,
                     error: this.error,
-                    gotoEntry: this.gotoEntry,
                     form: this.form,
                     searchFields: this.searchFields,
+                    gotoEntry: this.gotoEntry,
+                    onFieldInit: this.onFieldInit,
                 };
             }
         } finally {
@@ -99,5 +103,6 @@ export type AddonDataFieldPluginComponentData = {
     error?: string; // Error when editing.
     form?: FormGroup; // Form where to add the form control. Just required for edit and search modes.
     searchFields?: CoreFormFields; // The search value of all fields.
-    gotoEntry: EventEmitter<unknown>;
+    gotoEntry: EventEmitter<number>;
+    onFieldInit: EventEmitter<AddonModDataEntryFieldInitialized>;
 };

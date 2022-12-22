@@ -14,11 +14,11 @@
         </ion-buttons>
     </ion-toolbar>
 </ion-header>
-<ion-content>
-    <ion-refresher slot="fixed" [disabled]="!activityComponent?.loaded" (ionRefresh)="activityComponent?.doRefresh($event.target)">
+<ion-content class="limited-width">
+    <ion-refresher slot="fixed" [disabled]="activityComponent?.showLoading" (ionRefresh)="activityComponent?.doRefresh($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>
 
-    <addon-mod-scorm-index [module]="module" [courseId]="courseId" (dataRetrieved)="updateData($event)">
+    <addon-mod-scorm-index [module]="module" [courseId]="courseId" [autoPlayData]="autoPlayData" (dataRetrieved)="updateData($event)">
     </addon-mod-scorm-index>
 </ion-content>

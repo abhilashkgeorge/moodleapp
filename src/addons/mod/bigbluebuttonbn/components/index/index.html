@@ -1,55 +1,22 @@
 <!-- Buttons to add to the header. -->
 <core-navbar-buttons slot="end">
-    <core-context-menu>
-        <core-context-menu-item *ngIf="externalUrl" [priority]="900" [content]="'core.openinbrowser' | translate" [href]="externalUrl"
-            iconAction="fas-external-link-alt">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="description" [priority]="800" [content]="'core.moduleintro' | translate"
-            (action)="expandDescription()" iconAction="fas-arrow-right">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="blog" [priority]="750" content="{{'addon.blog.blog' | translate}}" iconAction="far-newspaper"
-            (action)="gotoBlog()">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="loaded && isOnline" [priority]="700" [content]="'core.refresh' | translate"
-            (action)="doRefresh(null, $event)" [iconAction]="refreshIcon" [closeOnClick]="false">
-        </core-context-menu-item>
-        <core-context-menu-item *ngIf="prefetchStatusIcon" [priority]="500" [content]="prefetchText" (action)="prefetch($event)"
-            [iconAction]="prefetchStatusIcon" [closeOnClick]="false">
-        </core-context-menu-item>
-    </core-context-menu>
+    <ion-button fill="clear" (click)="openModuleSummary()" aria-haspopup="true" [attr.aria-label]="'core.info' | translate">
+        <ion-icon name="fas-info-circle" slot="icon-only" aria-hidden="true"></ion-icon>
+    </ion-button>
 </core-navbar-buttons>
 
 <!-- Content. -->
-<core-loading [hideUntil]="loaded" class="safe-area-page">
+<core-loading [hideUntil]="!showLoading">
 
     <!-- Activity info. -->
     <core-course-module-info [module]="module" [description]="description" [component]="component" [componentId]="componentId"
-        [courseId]="courseId">
+        [courseId]="courseId" (completionChanged)="onCompletionChange()">
     </core-course-module-info>
 
-    <ng-container *ngIf="groupInfo && (groupInfo.separateGroups || groupInfo.visibleGroups)">
-        <ion-card class="core-info-card" *ngIf="groupInfo.groups && groupInfo.groups.length > 1">
-            <ion-item>
-                <ion-icon name="fas-question-circle" slot="start" aria-hidden="true"></ion-icon>
-                <ion-label>{{ 'addon.mod_bigbluebuttonbn.view_groups_selection_warning' | translate }}</ion-label>
-            </ion-item>
-        </ion-card>
+    <core-group-selector [groupInfo]="groupInfo" [(selected)]="groupId" (selectedChange)="groupChanged()"
+        [multipleGroupsMessage]="'addon.mod_bigbluebuttonbn.view_groups_selection_warning' | translate"></core-group-selector>
 
-        <ion-item class="ion-text-wrap">
-            <ion-label id="addon-bigbluebuttonbn-groupslabel">
-                <ng-container *ngIf="groupInfo.separateGroups">{{'core.groupsseparate' | translate }}</ng-container>
-                <ng-container *ngIf="groupInfo.visibleGroups">{{'core.groupsvisible' | translate }}</ng-container>
-            </ion-label>
-            <ion-select [(ngModel)]="groupId" (ionChange)="groupChanged()" aria-labelledby="addon-bigbluebuttonbn-groupslabel"
-                interface="action-sheet" [interfaceOptions]="{header: 'core.group' | translate}">
-                <ion-select-option *ngFor="let groupOpt of groupInfo.groups" [value]="groupOpt.id">
-                    {{groupOpt.name}}
-                </ion-select-option>
-            </ion-select>
-        </ion-item>
-    </ng-container>
-
-    <ng-container *ngIf="meetingInfo">
+    <ng-container *ngIf="meetingInfo && showRoom">
         <ion-item class="ion-text-wrap" *ngIf="meetingInfo.openingtime">
             <ion-label>
                 <h3>{{ 'addon.mod_bigbluebuttonbn.mod_form_field_openingtime' | translate }}</h3>
@@ -108,15 +75,6 @@
             </ion-item>
         </ng-container>
 
-        <ion-button *ngIf="meetingInfo.canjoin" class="ion-margin" expand="block" (click)="joinRoom()">
-            {{ 'addon.mod_bigbluebuttonbn.view_conference_action_join' | translate }}
-        </ion-button>
-
-        <ion-button *ngIf="meetingInfo.statusrunning && meetingInfo.ismoderator" color="light" class="ion-margin" expand="block"
-            (click)="endMeeting()">
-            {{ 'addon.mod_bigbluebuttonbn.view_conference_action_end' | translate }}
-        </ion-button>
-
         <ion-card *ngIf="!meetingInfo.canjoin" class="core-warning-card">
             <ion-item class="ion-text-wrap">
                 <ion-icon name="fas-exclamation-triangle" slot="start" aria-hidden="true"></ion-icon>
@@ -124,7 +82,20 @@
             </ion-item>
         </ion-card>
     </ng-container>
-</core-loading>
 
-<core-course-module-navigation [hidden]="!loaded" [courseId]="courseId" [currentModule]="module" (completionChanged)="onCompletionChange()">
-</core-course-module-navigation>
+    <div collapsible-footer *ngIf="!showLoading" slot="fixed">
+        <div class="list-item-limited-width adaptable-buttons-row"
+            *ngIf="meetingInfo && showRoom && (meetingInfo.canjoin || (meetingInfo.statusrunning && meetingInfo.ismoderator))">
+            <ion-button *ngIf="meetingInfo.statusrunning && meetingInfo.ismoderator" fill="outline" class="ion-margin ion-text-wrap"
+                expand="block" (click)="endMeeting()">
+                {{ 'addon.mod_bigbluebuttonbn.view_conference_action_end' | translate }}
+            </ion-button>
+            <ion-button *ngIf="meetingInfo.canjoin" class="ion-margin ion-text-wrap" expand="block" (click)="joinRoom()">
+                {{ 'addon.mod_bigbluebuttonbn.view_conference_action_join' | translate }}
+            </ion-button>
+        </div>
+
+        <core-course-module-navigation [courseId]="courseId" [currentModuleId]="module.id">
+        </core-course-module-navigation>
+    </div>
+</core-loading>

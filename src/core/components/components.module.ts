@@ -60,6 +60,10 @@ import { CoreSpacerComponent } from './spacer/spacer';
 import { CoreHorizontalScrollControlsComponent } from './horizontal-scroll-controls/horizontal-scroll-controls';
 import { CoreButtonWithSpinnerComponent } from './button-with-spinner/button-with-spinner';
 import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
+import { CoreSwipeNavigationTourComponent } from './swipe-navigation-tour/swipe-navigation-tour';
+import { CoreMessageComponent } from './message/message';
+import { CoreGroupSelectorComponent } from './group-selector/group-selector';
+import { CoreRefreshButtonModalComponent } from './refresh-button-modal/refresh-button-modal';
 
 @NgModule({
     declarations: [
@@ -76,6 +80,7 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreEmptyBoxComponent,
         CoreFileComponent,
         CoreFilesComponent,
+        CoreGroupSelectorComponent,
         CoreIconComponent,
         CoreIframeComponent,
         CoreInfiniteLoadingComponent,
@@ -83,6 +88,7 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreLoadingComponent,
         CoreLocalFileComponent,
         CoreMarkRequiredComponent,
+        CoreMessageComponent,
         CoreModIconComponent,
         CoreNavBarButtonsComponent,
         CoreNavigationBarComponent,
@@ -102,6 +108,8 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreComboboxComponent,
         CoreSpacerComponent,
         CoreHorizontalScrollControlsComponent,
+        CoreSwipeNavigationTourComponent,
+        CoreRefreshButtonModalComponent,
     ],
     imports: [
         CommonModule,
@@ -125,6 +133,7 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreEmptyBoxComponent,
         CoreFileComponent,
         CoreFilesComponent,
+        CoreGroupSelectorComponent,
         CoreIconComponent,
         CoreIframeComponent,
         CoreInfiniteLoadingComponent,
@@ -132,6 +141,7 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreLoadingComponent,
         CoreLocalFileComponent,
         CoreMarkRequiredComponent,
+        CoreMessageComponent,
         CoreModIconComponent,
         CoreNavBarButtonsComponent,
         CoreNavigationBarComponent,
@@ -151,6 +161,8 @@ import { CoreSwipeSlidesComponent } from './swipe-slides/swipe-slides';
         CoreComboboxComponent,
         CoreSpacerComponent,
         CoreHorizontalScrollControlsComponent,
+        CoreSwipeNavigationTourComponent,
+        CoreRefreshButtonModalComponent,
     ],
 })
 export class CoreComponentsModule {}

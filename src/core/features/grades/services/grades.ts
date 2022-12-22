@@ -108,7 +108,7 @@ export class CoreGradesProvider {
 
         userId = userId || site.getUserId();
 
-        return await this.getCourseGradesItems(courseId, userId, groupId, siteId, ignoreCache);
+        return this.getCourseGradesItems(courseId, userId, groupId, siteId, ignoreCache);
     }
 
     /**
@@ -199,7 +199,7 @@ export class CoreGradesProvider {
         const table = await site.read<CoreGradesGetUserGradesTableWSResponse>('gradereport_user_get_grades_table', params, preSets);
 
         if (!table?.tables?.[0]) {
-            throw new CoreError('Coudln\'t get course grades table');
+            throw new CoreError('Couldn\'t get course grades table');
         }
 
         return table.tables[0];

@@ -25,6 +25,7 @@ import {
     DISCUSSIONS_TABLE,
     REPLIES_TABLE,
 } from './database/offline';
+import { CoreText } from '@singletons/text';
 
 /**
  * Service to handle offline forum.
@@ -169,7 +170,7 @@ export class AddonModForumOfflineProvider {
             options: JSON.stringify(options || {}),
             groupid: groupId || AddonModForumProvider.ALL_PARTICIPANTS,
             userid: userId || site.getUserId(),
-            timecreated: timeCreated || new Date().getTime(),
+            timecreated: timeCreated || Date.now(),
         };
 
         await site.getDb().insertRecord(DISCUSSIONS_TABLE, data);
@@ -324,7 +325,7 @@ export class AddonModForumOfflineProvider {
             message: message,
             options: JSON.stringify(options || {}),
             userid: userId || site.getUserId(),
-            timecreated: new Date().getTime(),
+            timecreated: Date.now(),
         };
 
         await site.getDb().insertRecord(REPLIES_TABLE, data);
@@ -341,7 +342,7 @@ export class AddonModForumOfflineProvider {
         const site = await CoreSites.getSite(siteId);
         const siteFolderPath = CoreFile.getSiteFolder(site.getId());
 
-        return CoreTextUtils.concatenatePaths(siteFolderPath, 'offlineforum/' + forumId);
+        return CoreText.concatenatePaths(siteFolderPath, 'offlineforum/' + forumId);
     }
 
     /**
@@ -355,7 +356,7 @@ export class AddonModForumOfflineProvider {
     async getNewDiscussionFolder(forumId: number, timeCreated: number, siteId?: string): Promise<string> {
         const folderPath = await this.getForumFolder(forumId, siteId);
 
-        return CoreTextUtils.concatenatePaths(folderPath, 'newdisc_' + timeCreated);
+        return CoreText.concatenatePaths(folderPath, 'newdisc_' + timeCreated);
     }
 
     /**
@@ -372,7 +373,7 @@ export class AddonModForumOfflineProvider {
         const site = await CoreSites.getSite(siteId);
         userId = userId || site.getUserId();
 
-        return CoreTextUtils.concatenatePaths(folderPath, 'reply_' + postId + '_' + userId);
+        return CoreText.concatenatePaths(folderPath, 'reply_' + postId + '_' + userId);
     }
 
     /**

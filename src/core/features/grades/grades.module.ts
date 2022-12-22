@@ -22,18 +22,17 @@ import { CoreMainMenuTabRoutingModule } from '@features/mainmenu/mainmenu-tab-ro
 import { CoreUserDelegate } from '@features/user/services/user-delegate';
 import { PARTICIPANTS_PAGE_NAME } from '@features/user/user.module';
 import { CoreGradesProvider } from './services/grades';
-import { CoreGradesHelperProvider } from './services/grades-helper';
+import { CoreGradesHelperProvider, GRADES_PAGE_NAME } from './services/grades-helper';
 import { CoreGradesCourseOptionHandler } from './services/handlers/course-option';
 import { CoreGradesOverviewLinkHandler } from './services/handlers/overview-link';
 import { CoreGradesUserHandler } from './services/handlers/user';
+import { CoreGradesReportLinkHandler } from './services/handlers/report-link';
 import { CoreGradesUserLinkHandler } from './services/handlers/user-link';
 
 export const CORE_GRADES_SERVICES: Type<unknown>[] = [
     CoreGradesProvider,
     CoreGradesHelperProvider,
 ];
-
-export const GRADES_PAGE_NAME = 'grades';
 
 const mainMenuChildrenRoutes: Routes = [
     {
@@ -64,6 +63,7 @@ const courseIndexRoutes: Routes = [
             multi: true,
             useValue: () => {
                 CoreUserDelegate.registerHandler(CoreGradesUserHandler.instance);
+                CoreContentLinksDelegate.registerHandler(CoreGradesReportLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreGradesUserLinkHandler.instance);
                 CoreContentLinksDelegate.registerHandler(CoreGradesOverviewLinkHandler.instance);
                 CoreCourseOptionsDelegate.registerHandler(CoreGradesCourseOptionHandler.instance);

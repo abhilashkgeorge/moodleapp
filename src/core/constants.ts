@@ -14,6 +14,7 @@
 
 import envJson from '@/assets/env.json';
 import { EnvironmentConfig } from '@/types/config';
+import { CoreBrowser } from '@singletons/browser';
 
 /**
  * Context levels enumeration.
@@ -35,7 +36,7 @@ export const enum ModPurpose {
     MOD_PURPOSE_ADMINISTRATION = 'administration',
     MOD_PURPOSE_INTERFACE = 'interface',
     MOD_PURPOSE_OTHER = 'other',
-};
+}
 
 /**
  * Static class to contain all the core constants.
@@ -93,10 +94,10 @@ export class CoreConstants {
     static readonly NOT_DOWNLOADABLE = 'notdownloadable';
 
     // Download / prefetch status icon.
-    static readonly ICON_DOWNLOADED = 'cloud-done';
+    static readonly ICON_DOWNLOADED = 'fam-cloud-done';
     static readonly ICON_DOWNLOADING = 'spinner';
-    static readonly ICON_NOT_DOWNLOADED = 'cloud-download';
-    static readonly ICON_OUTDATED = 'fas-redo-alt';
+    static readonly ICON_NOT_DOWNLOADED = 'fas-cloud-download-alt';
+    static readonly ICON_OUTDATED = 'fam-cloud-refresh';
     static readonly ICON_NOT_DOWNLOADABLE = '';
 
     // General download and sync icons.
@@ -146,20 +147,16 @@ export class CoreConstants {
     static readonly BUILD = envJson.build as unknown as EnvironmentBuild; // Build info.
 
     /**
-     * Update config with the given values.
+     * Check whether devtools should be enabled.
      *
-     * @param config Config updates.
+     * @returns Whether devtools should be enabled.
      */
-    static patchConfig(config: Partial<EnvironmentConfig>): void {
-        Object.assign(this.CONFIG, config);
-    }
-
-    /**
-     * Reset config values to its original state.
-     */
-    static resetConfig(): void {
-        Object.keys(this.CONFIG).forEach(key => delete this.CONFIG[key]);
-        Object.assign(this.CONFIG, envJson.config);
+    static enableDevTools(): boolean {
+        // @todo [4.0] This is not the proper way to check for development tools, we should rely only on the BUILD variable.
+        return this.BUILD.isDevelopment
+            || this.BUILD.isTesting
+            || this.CONFIG.versionname.includes('-dev')
+            || CoreBrowser.hasDevelopmentSetting('DevTools');
     }
 
 }
@@ -171,4 +168,4 @@ interface EnvironmentBuild {
     isDevelopment: boolean;
     lastCommitHash: string;
     compilationTime: number;
-};
+}

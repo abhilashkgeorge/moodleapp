@@ -2,11 +2,13 @@
 
 :host {
     --header-background: var(--white);
-    --odd-cell-background: var(--gray-lighter);
+    --odd-cell-background: var(--light);
+    --odd-cell-hover: var(--gray-200);
     --even-cell-background: var(--white);
-    --odd-cell-hover: var(--gray-light);
-    --even-cell-hover: var(--gray-lighter);
-    --icon-color: #999999;
+    --even-cell-hover: var(--light);
+    --icon-color: var(--gray-500);
+    --border-color: var(--stroke);
+    --mod-icon-filter: brightness(0);
 
     .odd {
         --cell-background: var(--odd-cell-background);
@@ -20,21 +22,14 @@
 
 }
 
-:host-context(body.dark) {
-    --header-background: var(--black);
-    --odd-cell-background: var(--gray-darker);
-    --even-cell-background: var(--black);
-    --odd-cell-hover: var(--gray-dark);
-    --even-cell-hover: var(--gray-darker);
-    --icon-color: #eeeeee;
-}
-
-:host-context(ion-app.md) {
-    --border-color: var(--ion-item-border-color, var(--ion-border-color, var(--ion-color-step-150, rgba(0, 0, 0, .13))));
-}
-
-:host-context(ion-app.ios) {
-    --border-color: var(--ion-item-border-color, var(--ion-border-color, var(--ion-color-step-250, #c8c7cc)));
+:host-context(html.dark) {
+    --header-background: var(--gray-900);
+    --odd-cell-background: var(--gray-800);
+    --odd-cell-hover: var(--gray-600);
+    --even-cell-background: var(--gray-900);
+    --even-cell-hover: var(--gray-700);
+    --icon-color: var(--gray-200);
+    --mod-icon-filter: brightness(0) invert(1);
 }
 
 .core-grades-table {
@@ -49,7 +44,7 @@
     }
 
     th, td {
-        @include padding(10px, 10px, 10px, null);
+        @include padding(8px, 8px, 8px, null);
         vertical-align: top;
         white-space: normal;
         text-align: start;
@@ -62,7 +57,7 @@
     }
 
     thead #gradeitem {
-        @include padding(null, null, null, 23px);
+        @include padding(null, null, null, 24px);
     }
 
     tbody th {
@@ -70,11 +65,11 @@
     }
 
     tbody #gradeitem {
-        @include padding(null, null, null, 5px);
+        @include padding(null, null, null, 4px);
     }
 
     .core-grades-table-gradeitem {
-        @include padding(null, null, null, 5px);
+        @include padding(null, null, null, 4px);
         font-weight: bold;
 
         &.column-itemname {
@@ -87,8 +82,10 @@
         }
 
         core-mod-icon {
-            padding: 0.1rem;
+            padding: 0px;
             --size: 16px;
+            background: transparent;
+            --filter: var(--mod-icon-filter);
         }
 
 
@@ -97,23 +94,34 @@
         }
 
         span {
-            @include margin(null, null, null, 5px);
+            @include margin(null, null, null, 4px);
         }
 
         .expandable-status-icon {
-            font-size: 14px;
+            font-size: var(--text-size);
             @include margin-horizontal(0, 2px);
+            @include core-transition(transform, 200ms);
+
+            &.expandable-status-icon-expanded {
+                transform: var(--rotate-expandable);
+            }
         }
 
     }
 
     .core-grades-table-feedback {
-        @include padding(null, null, null, 5px);
+        @include padding(null, null, null, 4px);
 
         .no-overflow {
             overflow: auto;
         }
 
+    }
+
+    .core-grades-table-grade {
+        ion-icon {
+            @include padding(null, 4px, null, null);
+        }
     }
 
     .dimmed_text,

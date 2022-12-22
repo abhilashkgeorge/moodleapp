@@ -143,7 +143,7 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
 
         if (password) {
             try {
-                return this.validatePassword(lessonId, accessInfo, password, options);
+                return await this.validatePassword(lessonId, accessInfo, password, options);
             } catch {
                 // Error validating it.
             }
@@ -225,7 +225,7 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
      * @inheritdoc
      */
     prefetch(module: CoreCourseAnyModuleData, courseId: number, single?: boolean): Promise<void> {
-        return this.prefetchPackage(module, courseId, this.prefetchLesson.bind(this, module, courseId, !!single));
+        return this.prefetchPackage(module, courseId, (siteId) => this.prefetchLesson(module, courseId, !!single, siteId));
     }
 
     /**
@@ -320,7 +320,7 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
      * @param lesson Lesson.
      * @param password Password (if needed).
      * @param retake Retake to prefetch.
-     * @param options Options.
+     * @param modOptions Options.
      * @return Promise resolved when done.
      */
     protected async prefetchPlayData(
@@ -364,12 +364,7 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
         const promises = pages.map(async (data) => {
             // Check if any page has a RANDOMBRANCH jump.
             if (!hasRandomBranch) {
-                for (let i = 0; i < data.jumps.length; i++) {
-                    if (data.jumps[i] == AddonModLessonProvider.LESSON_RANDOMBRANCH) {
-                        hasRandomBranch = true;
-                        break;
-                    }
-                }
+                hasRandomBranch = data.jumps.some((jump) => jump === AddonModLessonProvider.LESSON_RANDOMBRANCH);
             }
 
             // Get the page data. We don't pass accessInfo because we don't need to calculate the offline data.
@@ -436,7 +431,7 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
     ): Promise<void> {
         const groupInfo = await CoreGroups.getActivityGroupInfo(moduleId, false, undefined, modOptions.siteId, true);
 
-        await Promise.all(groupInfo.groups?.map(async (group) => {
+        await Promise.all(groupInfo.groups.map(async (group) => {
             await AddonModLesson.getRetakesOverview(lessonId, {
                 groupId: group.id,
                 ...modOptions, // Include all options.
@@ -499,8 +494,8 @@ export class AddonModLessonPrefetchHandlerService extends CoreCourseActivityPref
      * Validate the password.
      *
      * @param lessonId Lesson ID.
-     * @param info Lesson access info.
-     * @param pwd Password to check.
+     * @param accessInfo Lesson access info.
+     * @param password Password to check.
      * @param options Other options.
      * @return Promise resolved when done.
      */

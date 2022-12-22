@@ -12,20 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, Optional, OnInit, OnDestroy } from '@angular/core';
+import { Component, Optional, OnInit, OnDestroy, Output, EventEmitter } from '@angular/core';
 import { IonContent } from '@ionic/angular';
 
 import { CoreConstants } from '@/core/constants';
 import { CoreSite } from '@classes/site';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
-import { CoreCourse } from '@features/course/services/course';
 import { CoreH5PDisplayOptions } from '@features/h5p/classes/core';
 import { CoreH5PHelper } from '@features/h5p/classes/helper';
 import { CoreH5P } from '@features/h5p/services/h5p';
 import { CoreXAPIOffline } from '@features/xapi/services/offline';
 import { CoreXAPI } from '@features/xapi/services/xapi';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFilepool } from '@services/filepool';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
@@ -56,6 +55,8 @@ import { AddonModH5PActivityModuleHandlerService } from '../../services/handlers
 })
 export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActivityComponent implements OnInit, OnDestroy {
 
+    @Output() onActivityFinish = new EventEmitter<boolean>();
+
     component = AddonModH5PActivityProvider.COMPONENT;
     moduleName = 'h5pactivity';
 
@@ -85,6 +86,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     protected site: CoreSite;
     protected observer?: CoreEventObserver;
     protected messageListenerFunction: (event: MessageEvent) => Promise<void>;
+    protected checkCompletionAfterLog = false; // It's called later, when the user plays the package.
 
     constructor(
         protected content?: IonContent,
@@ -96,7 +98,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
         this.siteCanDownload = this.site.canDownloadFiles() && !CoreH5P.isOfflineDisabledInSite();
 
         // Listen for messages from the iframe.
-        this.messageListenerFunction = this.onIframeMessage.bind(this);
+        this.messageListenerFunction = (event) => this.onIframeMessage(event);
         window.addEventListener('message', this.messageListenerFunction);
     }
 
@@ -112,51 +114,47 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
-        try {
-            this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.module.id, {
-                siteId: this.siteId,
-            });
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
+        this.h5pActivity = await AddonModH5PActivity.getH5PActivity(this.courseId, this.module.id, {
+            siteId: this.siteId,
+        });
 
-            this.dataRetrieved.emit(this.h5pActivity);
-            this.description = this.h5pActivity.intro;
-            this.displayOptions = CoreH5PHelper.decodeDisplayOptions(this.h5pActivity.displayoptions);
+        this.dataRetrieved.emit(this.h5pActivity);
+        this.description = this.h5pActivity.intro;
+        this.displayOptions = CoreH5PHelper.decodeDisplayOptions(this.h5pActivity.displayoptions);
 
-            if (sync) {
-                await this.syncActivity(showErrors);
-            }
+        if (sync) {
+            await this.syncActivity(showErrors);
+        }
 
-            await Promise.all([
-                this.checkHasOffline(),
-                this.fetchAccessInfo(),
-                this.fetchDeployedFileData(),
-            ]);
+        await Promise.all([
+            this.checkHasOffline(),
+            this.fetchAccessInfo(),
+            this.fetchDeployedFileData(),
+        ]);
 
-            this.trackComponent = this.accessInfo?.cansubmit ? AddonModH5PActivityProvider.TRACK_COMPONENT : '';
-            this.canViewAllAttempts = !!this.h5pActivity.enabletracking && !!this.accessInfo?.canreviewattempts &&
+        this.trackComponent = this.accessInfo?.cansubmit ? AddonModH5PActivityProvider.TRACK_COMPONENT : '';
+        this.canViewAllAttempts = !!this.h5pActivity.enabletracking && !!this.accessInfo?.canreviewattempts &&
                 AddonModH5PActivity.canGetUsersAttemptsInSite();
 
-            if (this.h5pActivity.package && this.h5pActivity.package[0]) {
-                // The online player should use the original file, not the trusted one.
-                this.onlinePlayerUrl = CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
-                    this.site.getURL(),
-                    this.h5pActivity.package[0].fileurl,
-                    this.displayOptions,
-                    this.trackComponent,
-                );
-            }
+        if (this.h5pActivity.package && this.h5pActivity.package[0]) {
+            // The online player should use the original file, not the trusted one.
+            this.onlinePlayerUrl = CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
+                this.site.getURL(),
+                this.h5pActivity.package[0].fileurl,
+                this.displayOptions,
+                this.trackComponent,
+            );
+        }
 
-            if (!this.siteCanDownload || this.state == CoreConstants.DOWNLOADED) {
-                // Cannot download the file or already downloaded, play the package directly.
-                this.play();
+        if (!this.siteCanDownload || this.state == CoreConstants.DOWNLOADED) {
+            // Cannot download the file or already downloaded, play the package directly.
+            this.play();
 
-            } else if ((this.state == CoreConstants.NOT_DOWNLOADED || this.state == CoreConstants.OUTDATED) && CoreApp.isOnline() &&
+        } else if ((this.state == CoreConstants.NOT_DOWNLOADED || this.state == CoreConstants.OUTDATED) && CoreNetwork.isOnline() &&
                     this.deployedFile?.filesize && CoreFilepool.shouldDownload(this.deployedFile.filesize)) {
-                // Package is small, download it automatically. Don't block this function for this.
-                this.downloadAutomatically();
-            }
-        } finally {
-            this.fillContextMenu(refresh);
+            // Package is small, download it automatically. Don't block this function for this.
+            this.downloadAutomatically();
         }
     }
 
@@ -284,7 +282,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
             return;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             CoreDomUtils.showErrorModal('core.networkerrormsg', true);
 
             return;
@@ -394,7 +392,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
         // Mark the activity as viewed.
         await AddonModH5PActivity.logView(this.h5pActivity.id, this.h5pActivity.name, this.siteId);
 
-        CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
+        this.checkCompletion();
     }
 
     /**
@@ -461,14 +459,15 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
                 try {
                     // Invalidate attempts.
                     await AddonModH5PActivity.invalidateUserAttempts(this.h5pActivity.id, undefined, this.siteId);
-                } catch (error) {
+                } catch {
                     // Ignore errors.
                 }
 
                 // Check if the H5P has ended. Final statements don't include a subContentId.
                 const hasEnded = data.statements.some(statement => !statement.object.id.includes('subContentId='));
                 if (hasEnded) {
-                    CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
+                    this.onActivityFinish.emit(hasEnded);
+                    this.checkCompletion();
                 }
             }
         } catch (error) {
@@ -519,7 +518,7 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
             };
         }
 
-        return await AddonModH5PActivitySync.syncActivity(this.h5pActivity.context, this.site.getId());
+        return AddonModH5PActivitySync.syncActivity(this.h5pActivity.context, this.site.getId());
     }
 
     /**
@@ -527,19 +526,6 @@ export class AddonModH5PActivityIndexComponent extends CoreCourseModuleMainActiv
      */
     protected autoSyncEventReceived(): void {
         this.checkHasOffline();
-    }
-
-    /**
-     * @inheritdoc
-     */
-    async gotoBlog(): Promise<void> {
-        this.isOpeningPage = true;
-
-        try {
-            await super.gotoBlog();
-        } finally {
-            this.isOpeningPage = false;
-        }
     }
 
     /**

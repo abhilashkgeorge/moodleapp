@@ -16,27 +16,46 @@ import { AbstractType, Component, CUSTOM_ELEMENTS_SCHEMA, Type, ViewChild } from
 import { BrowserModule } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Observable, Subject } from 'rxjs';
+import { sep } from 'path';
 
 import { CORE_SITE_SCHEMAS } from '@services/sites';
-import { CoreSingletonProxy, Network, Platform } from '@singletons';
+import { ApplicationInit, CoreSingletonProxy, Translate } from '@singletons';
 import { CoreTextUtilsProvider } from '@services/utils/text';
 
 import { TranslatePipeStub } from './stubs/pipes/translate';
 import { CoreExternalContentDirectiveStub } from './stubs/directives/core-external-content';
+import { CoreNetwork } from '@services/network';
+import { CorePlatform } from '@services/platform';
+import { CoreDB } from '@services/db';
+import { CoreNavigator } from '@services/navigator';
+import { CoreDomUtils } from '@services/utils/dom';
 
 abstract class WrapperComponent<U> {
 
     child!: U;
 
-};
+}
 
 type ServiceInjectionToken = AbstractType<unknown> | Type<unknown> | string;
 
 let testBedInitialized = false;
 const textUtils = new CoreTextUtilsProvider();
 const DEFAULT_SERVICE_SINGLETON_MOCKS: [CoreSingletonProxy, Record<string, unknown>][] = [
-    [Platform, mock({ is: () => false, ready: () => Promise.resolve(), resume: new Subject<void>() })],
-    [Network, { onChange: () => new Observable() }],
+    [Translate, mock({ instant: key => key })],
+    [CoreDB, mock({ getDB: () => mock() })],
+    [CoreNetwork, mock({ onChange: () => new Observable() })],
+    [CoreDomUtils, mock({ showModalLoading: () => Promise.resolve(mock({}, ['dismiss'])) })],
+    [CoreNavigator, mock({ navigateToSitePath: () => Promise.resolve(true) })],
+    [ApplicationInit, mock({
+        donePromise: Promise.resolve(),
+        runInitializers: () => Promise.resolve(),
+    })],
+    [CorePlatform, mock({
+        is: () => false,
+        isMobile: () => false,
+        ready: () => Promise.resolve(),
+        resume: new Subject<void>(),
+    })],
 ];
 
 async function renderAngularComponent<T>(component: Type<T>, config: RenderConfig): Promise<ComponentFixture<T>> {
@@ -244,4 +263,38 @@ export async function renderWrapperComponent<T>(
         .join(' ');
 
     return renderTemplate(component, `<${tag} ${inputAttributes}></${tag}>`, config);
+}
+
+/**
+ * Transform the provided path into a cross-platform path.
+ *
+ * @param unixPath path in unix format.
+ * @returns cross-platform path.
+ */
+export function agnosticPath(unixPath: string): string {
+    return unixPath.replace(/\//g, sep);
+}
+
+/**
+ * Waits a certain time.
+ *
+ * @param time Number of milliseconds.
+ */
+export function wait(time: number): Promise<void> {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            resolve();
+        }, time);
+    });
+}
+
+/**
+ * Mocks translate service with certain translations.
+ *
+ * @param translations List of translations.
+ */
+export function mockTranslate(translations: Record<string, string>): void {
+    mockSingleton(Translate, {
+        instant: (key) => translations[key] ?? key,
+    });
 }

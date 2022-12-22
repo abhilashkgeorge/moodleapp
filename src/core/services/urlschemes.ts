@@ -19,12 +19,12 @@ import { CoreWSError } from '@classes/errors/wserror';
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
 import { CoreLoginHelper, CoreLoginSSOData } from '@features/login/services/login-helper';
-import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
 import { ApplicationInit, makeSingleton, Translate } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
+import { CoreText } from '@singletons/text';
 import { CoreConstants } from '../constants';
 import { CoreApp } from './app';
-import { CoreNavigator } from './navigator';
+import { CoreNavigator, CoreRedirectPayload } from './navigator';
 import { CoreSiteCheckResponse, CoreSites } from './sites';
 import { CoreDomUtils } from './utils/dom';
 import { CoreTextErrorObject, CoreTextUtils } from './utils/text';
@@ -57,8 +57,8 @@ export class CoreCustomURLSchemesProvider {
 
         const currentSite = CoreSites.getCurrentSite();
 
-        if (!currentSite || currentSite.getToken() != data.token) {
-            // Token belongs to a different site, create it. It doesn't matter if it already exists.
+        if (!currentSite || currentSite.getToken() != data.token || currentSite.isLoggedOut()) {
+            // Token belongs to a different site or site is logged out, create it. It doesn't matter if it already exists.
 
             if (!data.siteUrl.match(/^https?:\/\//)) {
                 // URL doesn't have a protocol and it's required to be able to create the site. Check which one to use.
@@ -108,7 +108,7 @@ export class CoreCustomURLSchemesProvider {
 
         // Some platforms like Windows add a slash at the end. Remove it.
         // Some sites add a # at the end of the URL. If it's there, remove it.
-        url = url.replace(/\/?#?\/?$/, '');
+        url = url.replace(/\/?(#.*)?\/?$/, '');
 
         const modal = await CoreDomUtils.showModalLoading();
         let data: CoreCustomURLSchemesParams;
@@ -151,19 +151,20 @@ export class CoreCustomURLSchemesProvider {
 
             if (data.isSSOToken || (data.isAuthenticationURL && siteId && CoreSites.getCurrentSiteId() == siteId)) {
                 // Site created and authenticated, open the page to go.
-                if (data.pageName) {
-                    // Page defined, go to that page instead of site initial page.
-                    CoreNavigator.navigateToSitePath(data.pageName, data.pageOptions);
-                } else {
-                    CoreNavigator.navigateToSiteHome();
-                }
+                CoreNavigator.navigateToSiteHome({
+                    params: <CoreRedirectPayload> {
+                        redirectPath: data.redirectPath,
+                        redirectOptions: data.redirectOptions,
+                        urlToOpen: data.urlToOpen,
+                    },
+                });
 
                 return;
             }
 
             if (data.redirect && !data.redirect.match(/^https?:\/\//)) {
                 // Redirect is a relative URL. Append the site URL.
-                data.redirect = CoreTextUtils.concatenatePaths(data.siteUrl, data.redirect);
+                data.redirect = CoreText.concatenatePaths(data.siteUrl, data.redirect);
             }
 
             let siteIds = [siteId];
@@ -396,20 +397,20 @@ export class CoreCustomURLSchemesProvider {
             urlToOpen: data.redirect,
             siteConfig: checkResponse.config,
         };
-        let hasSitePluginsLoaded = false;
 
         if (CoreSites.isLoggedIn()) {
             // Ask the user before changing site.
             await CoreDomUtils.showConfirm(Translate.instant('core.contentlinks.confirmurlothersite'));
 
             if (!ssoNeeded) {
-                hasSitePluginsLoaded = CoreSitePlugins.hasSitePluginsLoaded;
-                if (hasSitePluginsLoaded) {
-                    // Store the redirect since logout will restart the app.
-                    CoreApp.storeRedirect(CoreConstants.NO_SITE_ID, '/login/credentials', { params: pageParams });
-                }
+                const willReload = await CoreSites.logoutForRedirect(CoreConstants.NO_SITE_ID, {
+                    redirectPath: '/login/credentials',
+                    redirectOptions: { params: pageParams },
+                });
 
-                await CoreSites.logout();
+                if (willReload) {
+                    return;
+                }
             }
         }
 
@@ -420,7 +421,7 @@ export class CoreCustomURLSchemesProvider {
                 checkResponse.service,
                 checkResponse.config?.launchurl,
             );
-        } else if (!hasSitePluginsLoaded) {
+        } else {
             await CoreNavigator.navigateToLoginCredentials(pageParams);
         }
     }

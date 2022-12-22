@@ -20,12 +20,11 @@ import { CoreApp } from '@services/app';
 import { CoreConfig } from '@services/config';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreTextUtils } from '@services/utils/text';
-import { CoreUtils } from '@services/utils/utils';
 import { SQLiteDB } from '@classes/sqlitedb';
 import { CoreQueueRunner } from '@classes/queue-runner';
 import { CoreError } from '@classes/errors/error';
 import { CoreConstants } from '@/core/constants';
-import { makeSingleton, NgZone, Platform, Translate, LocalNotifications, Push } from '@singletons';
+import { makeSingleton, NgZone, Translate, LocalNotifications, Push } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import {
     APP_SCHEMA,
@@ -34,6 +33,8 @@ import {
     SITES_TABLE_NAME,
     CodeRequestsQueueItem,
 } from '@services/database/local-notifications';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Service to handle local notifications.
@@ -68,7 +69,7 @@ export class CoreLocalNotificationsProvider {
      * Init some properties.
      */
     async initialize(): Promise<void> {
-        await Platform.ready();
+        await CorePlatform.ready();
 
         if (!this.isAvailable()) {
             return;
@@ -507,7 +508,7 @@ export class CoreLocalNotificationsProvider {
      * @return Promise resolved when the code is retrieved.
      */
     protected requestCode(table: string, id: string): Promise<number> {
-        const deferred = CoreUtils.promiseDefer<number>();
+        const deferred = new CorePromisedValue<number>();
         const key = table + '#' + id;
         const isQueueEmpty = Object.keys(this.codeRequestsQueue).length == 0;
 
@@ -527,7 +528,7 @@ export class CoreLocalNotificationsProvider {
             this.processNextRequest();
         }
 
-        return deferred.promise;
+        return deferred;
     }
 
     /**

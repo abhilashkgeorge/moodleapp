@@ -55,11 +55,21 @@ export class CoreWindow {
      * @return Promise resolved if confirmed, rejected if rejected.
      */
     static async confirmOpenBrowserIfNeeded(url: string): Promise<void> {
+        if (!CoreUrlUtils.isHttpURL(url)) {
+            // Only ask confirm for http(s), other cases usually launch external apps.
+            return;
+        }
+
         // Check if the user decided not to see the warning.
         const dontShowWarning = await CoreConfig.get(CoreConstants.SETTINGS_DONT_SHOW_EXTERNAL_LINK_WARN, 0);
         if (dontShowWarning) {
             return;
         }
+
+        // Remove common sensitive information from the URL.
+        url = url
+            .replace(/token=[^&#]+/gi, 'token=secret')
+            .replace(/tokenpluginfile\.php\/[^/]+/gi, 'tokenpluginfile.php/secret');
 
         const dontShowAgain = await CoreDomUtils.showPrompt(
             Translate.instant('core.warnopeninbrowser', { url }),
@@ -86,7 +96,7 @@ export class CoreWindow {
 
             if (!CoreFileHelper.isOpenableInApp({ filename })) {
                 try {
-                    await CoreFileHelper.showConfirmOpenUnsupportedFile();
+                    await CoreFileHelper.showConfirmOpenUnsupportedFile(false, { filename });
                 } catch (error) {
                     return; // Cancelled, stop.
                 }
@@ -107,7 +117,7 @@ export class CoreWindow {
                     // Not logged in, cannot auto-login.
                     CoreUtils.openInBrowser(url);
                 } else {
-                    await CoreSites.getRequiredCurrentSite().openInBrowserWithAutoLoginIfSameSite(url);
+                    await CoreSites.getRequiredCurrentSite().openInBrowserWithAutoLogin(url);
                 }
             }
         }

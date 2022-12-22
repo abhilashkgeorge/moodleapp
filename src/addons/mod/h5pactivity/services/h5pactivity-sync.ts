@@ -19,7 +19,7 @@ import { CoreCourseActivitySyncBaseProvider } from '@features/course/classes/act
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreXAPIOffline } from '@features/xapi/services/offline';
 import { CoreXAPI } from '@features/xapi/services/xapi';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
@@ -48,7 +48,7 @@ export class AddonModH5PActivitySyncProvider extends CoreCourseActivitySyncBaseP
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllActivities(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('H5P activities', this.syncAllActivitiesFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('H5P activities', (siteId) => this.syncAllActivitiesFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -103,7 +103,7 @@ export class AddonModH5PActivitySyncProvider extends CoreCourseActivitySyncBaseP
     syncActivity(contextId: number, siteId?: string): Promise<AddonModH5PActivitySyncResult> {
         siteId = siteId || CoreSites.getCurrentSiteId();
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }

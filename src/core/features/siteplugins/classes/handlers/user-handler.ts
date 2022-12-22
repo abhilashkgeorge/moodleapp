@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { CorePromisedValue } from '@classes/promised-value';
 import {
     CoreSitePlugins,
     CoreSitePluginsContent,
@@ -19,10 +20,13 @@ import {
     CoreSitePluginsUserHandlerData,
 } from '@features/siteplugins/services/siteplugins';
 import { CoreUserProfile } from '@features/user/services/user';
-import { CoreUserDelegateService, CoreUserProfileHandler, CoreUserProfileHandlerData } from '@features/user/services/user-delegate';
+import {
+    CoreUserDelegateContext,
+    CoreUserDelegateService,
+    CoreUserProfileHandler,
+    CoreUserProfileHandlerData,
+} from '@features/user/services/user-delegate';
 import { CoreNavigator } from '@services/navigator';
-import { CoreSites } from '@services/sites';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
 import { Md5 } from 'ts-md5';
 import { CoreSitePluginsBaseHandler } from './base-handler';
 
@@ -34,7 +38,7 @@ export class CoreSitePluginsUserProfileHandler extends CoreSitePluginsBaseHandle
     priority: number;
     type: string;
 
-    protected updatingDefer?: PromiseDefer<void>;
+    protected updatingDefer?: CorePromisedValue<void>;
 
     constructor(
         name: string,
@@ -55,11 +59,7 @@ export class CoreSitePluginsUserProfileHandler extends CoreSitePluginsBaseHandle
     /**
      * @inheritdoc
      */
-    async isEnabledForCourse(
-        courseId?: number,
-    ): Promise<boolean> {
-        courseId = courseId || CoreSites.getCurrentSiteHomeId();
-
+    async isEnabledForContext(context: CoreUserDelegateContext, courseId: number): Promise<boolean> {
         // Check if it's enabled for the course.
         return CoreSitePlugins.isHandlerEnabledForCourse(
             courseId,
@@ -89,12 +89,12 @@ export class CoreSitePluginsUserProfileHandler extends CoreSitePluginsBaseHandle
             title: this.title,
             icon: this.handlerSchema.displaydata?.icon,
             class: this.handlerSchema.displaydata?.class,
-            action: (event: Event, user: CoreUserProfile, courseId?: number): void => {
+            action: (event, user, context, contextId): void => {
                 event.preventDefault();
                 event.stopPropagation();
 
                 const args = {
-                    courseid: courseId,
+                    courseid: contextId,
                     userid: user.id,
                 };
                 const hash = <string> Md5.hashAsciiStr(JSON.stringify(args));
@@ -130,7 +130,7 @@ export class CoreSitePluginsUserProfileHandler extends CoreSitePluginsBaseHandle
      * Mark init being updated.
      */
     updatingInit(): void {
-        this.updatingDefer = CoreUtils.promiseDefer();
+        this.updatingDefer = new CorePromisedValue();
     }
 
 }

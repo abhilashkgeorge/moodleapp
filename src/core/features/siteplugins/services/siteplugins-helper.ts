@@ -38,7 +38,6 @@ import { CoreFilepool } from '@services/filepool';
 import { CoreLang } from '@services/lang';
 import { CoreSites } from '@services/sites';
 import { CoreTextUtils } from '@services/utils/text';
-import { CoreUrlUtils } from '@services/utils/url';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWS } from '@services/ws';
 import { CoreEvents } from '@singletons/events';
@@ -85,6 +84,8 @@ import { CoreContentLinksModuleIndexHandler } from '@features/contentlinks/class
 import { CoreContentLinksDelegate } from '@features/contentlinks/services/contentlinks-delegate';
 import { CoreContentLinksModuleListHandler } from '@features/contentlinks/classes/module-list-handler';
 import { CoreObject } from '@singletons/object';
+import { CoreUrlUtils } from '@services/utils/url';
+import { CoreText } from '@singletons/text';
 
 const HANDLER_DISABLED = 'core_site_plugins_helper_handler_disabled';
 
@@ -164,10 +165,10 @@ export class CoreSitePluginsHelperProvider {
     ): Promise<string> {
         const site = await CoreSites.getSite(siteId);
 
-        // Get the absolute URL. If it's a relative URL, add the site URL to it.
+        // Make sure it's an absolute URL. Do not use toAbsoluteURL because it can change the behaviour and break plugin styles.
         let url = handlerSchema.styles?.url;
         if (url && !CoreUrlUtils.isAbsoluteURL(url)) {
-            url = CoreTextUtils.concatenatePaths(site.getURL(), url);
+            url = CoreText.concatenatePaths(site.getURL(), url);
         }
 
         if (url && handlerSchema.styles?.version) {
@@ -193,6 +194,11 @@ export class CoreSitePluginsHelperProvider {
         if (!url) {
             // No styles.
             return '';
+        }
+
+        // Update the schema with the final CSS URL.
+        if (handlerSchema.styles) {
+            handlerSchema.styles.url = url;
         }
 
         // Download the file if not downloaded or the version changed.
@@ -360,7 +366,7 @@ export class CoreSitePluginsHelperProvider {
             plugin.parsedHandlers = CoreTextUtils.parseJSON(
                 plugin.handlers,
                 null,
-                this.logger.error.bind(this.logger, 'Error parsing site plugin handlers'),
+                error => this.logger.error('Error parsing site plugin handlers', error),
             );
         }
 
@@ -368,7 +374,7 @@ export class CoreSitePluginsHelperProvider {
             plugin.parsedLang = CoreTextUtils.parseJSON(
                 plugin.lang,
                 null,
-                this.logger.error.bind(this.logger, 'Error parsing site plugin lang'),
+                error => this.logger.error('Error parsing site plugin lang', error),
             );
         }
 

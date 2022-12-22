@@ -123,7 +123,7 @@ function readBytes (str, len, escapedString = false) {
     const isLowSurrogate = code >= 0xdc00 && code <= 0xdfff
 
     if (escapedString && chr === '\\') {
-      chr = String.fromCharCode(parseInt(str.substring(c + 1, 2), 16))
+      chr = String.fromCharCode(parseInt(str.substring(c + 1, c + 3), 16))
       escapedChars++
 
       // each escaped sequence is 3 characters. Go 2 chars ahead.
@@ -444,4 +444,4 @@ export class Locutus {
         return substr_replace(str, replace, start, length);
     }
 
-};
+}

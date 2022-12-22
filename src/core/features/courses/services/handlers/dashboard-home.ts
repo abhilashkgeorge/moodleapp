@@ -15,7 +15,10 @@
 import { Injectable } from '@angular/core';
 import { CoreBlockDelegate } from '@features/block/services/block-delegate';
 import { CoreMainMenuHomeHandler, CoreMainMenuHomeHandlerToDisplay } from '@features/mainmenu/services/home-delegate';
+import { CoreSites } from '@services/sites';
+import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
+import { CoreLogger } from '@singletons/logger';
 import { CoreCoursesDashboard } from '../dashboard';
 
 /**
@@ -28,6 +31,11 @@ export class CoreDashboardHomeHandlerService implements CoreMainMenuHomeHandler 
 
     name = 'CoreCoursesDashboard';
     priority = 1200;
+    logger: CoreLogger;
+
+    constructor() {
+        this.logger = CoreLogger.getInstance('CoreDashboardHomeHandlerService');
+    }
 
     /**
      * Check if the handler is enabled on a site level.
@@ -45,40 +53,33 @@ export class CoreDashboardHomeHandlerService implements CoreMainMenuHomeHandler 
      * @return Whether or not the handler is enabled on a site level.
      */
     async isEnabledForSite(siteId?: string): Promise<boolean> {
-        const promises: Promise<void>[] = [];
-        let blocksEnabled = false;
-        let dashboardAvailable = false;
-        let dashboardEnabled = false;
+        const site = await CoreSites.getSite(siteId);
 
         // Check if blocks and 3.6 dashboard is enabled.
-        promises.push(CoreBlockDelegate.areBlocksDisabled(siteId).then((disabled) => {
-            blocksEnabled = !disabled;
+        const [blocksDisabled, dashboardDisabled, dashboardAvailable, dashboardConfig] = await Promise.all([
+            CoreBlockDelegate.areBlocksDisabled(site.getId()),
+            CoreCoursesDashboard.isDisabled(site.getId()),
+            CoreCoursesDashboard.isAvailable(site.getId()),
+            CoreUtils.ignoreErrors(site.getConfig('enabledashboard'), '1'),
+        ]);
+        const dashboardEnabled = !dashboardDisabled && dashboardConfig !== '0';
 
-            return;
-        }));
+        if (dashboardAvailable && dashboardEnabled && !blocksDisabled) {
+            try {
+                const blocks = await CoreCoursesDashboard.getDashboardBlocks(undefined, siteId);
 
-        promises.push(CoreCoursesDashboard.isDisabled(siteId).then((disabled) => {
-            dashboardEnabled = !disabled;
+                return CoreBlockDelegate.hasSupportedBlock(blocks.mainBlocks) ||
+                    CoreBlockDelegate.hasSupportedBlock(blocks.sideBlocks);
+            } catch (error) {
+                // Error getting blocks, assume it's enabled.
+                this.logger.error('Error getting Dashboard blocks', error);
 
-            return;
-        }));
-
-        promises.push(CoreCoursesDashboard.isAvailable(siteId).then((available) => {
-            dashboardAvailable = available;
-
-            return;
-        }));
-
-        await Promise.all(promises);
-
-        if (dashboardAvailable && dashboardEnabled && blocksEnabled) {
-            const blocks = await CoreCoursesDashboard.getDashboardBlocks(undefined, siteId);
-
-            return CoreBlockDelegate.hasSupportedBlock(blocks.mainBlocks) || CoreBlockDelegate.hasSupportedBlock(blocks.sideBlocks);
+                return true;
+            }
         }
 
         // Dashboard is enabled but not available, we will fake blocks.
-        return dashboardEnabled && blocksEnabled;
+        return dashboardEnabled && !blocksDisabled;
     }
 
     /**

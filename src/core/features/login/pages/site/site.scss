@@ -1,18 +1,11 @@
 @import "~theme/globals";
 
-.item-input:last-child {
-    margin-bottom: 20px;
+:host {
+    --list-item-max-width: 600px;
 }
 
-.item {
-    &.core-login-need-help {
-        margin-top: 16px;
-    }
-    &.core-login-site-qrcode {
-        .item-inner {
-            border-bottom: 0;
-        }
-    }
+.item-input:last-child {
+    margin-bottom: 20px;
 }
 
 .core-login-site-connect {
@@ -25,7 +18,7 @@
     width: 50px;
     height: 50px;
     border-radius: 20%;
-    box-shadow: 0 0 4px #eee;
+    box-shadow: 0 0 4px var(--gray-200);
     text-align: center;
     overflow: hidden;
 
@@ -36,7 +29,7 @@
         height: auto;
         margin: 0 auto;
         margin-left: 50%;
-        transform: translateX(-50%);
+        @include transform(translate3d(-50%,0,0));
         object-fit: cover;
         object-position: 50% 50%;
     }
@@ -45,6 +38,15 @@
         font-size: 35px;
         height: 50px;
     }
+}
+
+:host-context([dir="rtl"]) {
+
+    .item ion-thumbnail img {
+        margin-left: 0;
+        margin-right: 50%;
+    }
+
 }
 
 .core-login-site-logo,
@@ -100,13 +102,7 @@
     }
 }
 
-@media (min-width: 768px) {
-    ion-content > * {
-        max-width: 600px;
-        margin: 0 auto;
-        width: 100%;
-    }
-
+@include media-breakpoint-up(md) {
     ion-content .core-login-site-logo {
         margin-top: 20%;
         &.hidden {
@@ -116,9 +112,10 @@
 }
 
 .core-login-entered-site {
-    background-color: var(--gray-lighter);
+    background-color: var(--light);
+
     ion-thumbnail {
-        box-shadow: 0 0 4px #ddd;
+        box-shadow: 0 0 4px var(--gray-300);
     }
 }
 

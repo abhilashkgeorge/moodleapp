@@ -153,4 +153,22 @@ export class AddonCalendarReminderTimeModalComponent implements OnInit {
         }
     }
 
+    /**
+     * Custom value input clicked.
+     *
+     * @param ev Click event.
+     */
+    async customInputClicked(ev: Event): Promise<void> {
+        if (this.radioValue === 'custom') {
+            return;
+        }
+
+        this.radioValue = 'custom';
+
+        const target = <HTMLInputElement | HTMLElement | null> ev.target;
+        if (target) {
+            CoreDomUtils.focusElement(target);
+        }
+    }
+
 }

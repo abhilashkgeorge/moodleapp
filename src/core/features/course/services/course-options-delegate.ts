@@ -16,7 +16,7 @@ import { Injectable } from '@angular/core';
 import { CoreDelegate, CoreDelegateHandler, CoreDelegateToDisplay } from '@classes/delegate';
 import { CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
-import { CoreUtils, PromiseDefer } from '@services/utils/utils';
+import { CoreUtils } from '@services/utils/utils';
 import {
     CoreCourseAnyCourseData,
     CoreCourseAnyCourseDataWithOptions,
@@ -28,6 +28,7 @@ import { CoreCourseProvider } from './course';
 import { Params } from '@angular/router';
 import { makeSingleton } from '@singletons';
 import { CoreEnrolledCourseDataWithExtraInfoAndOptions } from '@features/courses/services/courses-helper';
+import { CorePromisedValue } from '@classes/promised-value';
 
 /**
  * Interface that all course options handlers must implement.
@@ -89,7 +90,7 @@ export interface CoreCourseOptionsHandler extends CoreDelegateHandler {
      * @param course The course.
      * @return Promise resolved when done.
      */
-    prefetch?(course: CoreEnrolledCourseDataWithExtraInfoAndOptions): Promise<void>;
+    prefetch?(course: CoreCourseAnyCourseData): Promise<void>;
 }
 
 /**
@@ -224,7 +225,7 @@ export class CoreCourseOptionsDelegateService extends CoreDelegate<CoreCourseOpt
             access: CoreCourseAccess;
             navOptions?: CoreCourseUserAdminOrNavOptionIndexed;
             admOptions?: CoreCourseUserAdminOrNavOptionIndexed;
-            deferred: PromiseDefer<void>;
+            deferred: CorePromisedValue<void>;
             enabledHandlers: CoreCourseOptionsHandler[];
             enabledMenuHandlers: CoreCourseOptionsMenuHandler[];
         };
@@ -331,7 +332,7 @@ export class CoreCourseOptionsDelegateService extends CoreDelegate<CoreCourseOpt
                     access: accessData,
                     navOptions,
                     admOptions,
-                    deferred: CoreUtils.promiseDefer(),
+                    deferred: new CorePromisedValue(),
                     enabledHandlers: [],
                     enabledMenuHandlers: [],
                 };
@@ -339,13 +340,13 @@ export class CoreCourseOptionsDelegateService extends CoreDelegate<CoreCourseOpt
                 this.coursesHandlers[courseId].access = accessData;
                 this.coursesHandlers[courseId].navOptions = navOptions;
                 this.coursesHandlers[courseId].admOptions = admOptions;
-                this.coursesHandlers[courseId].deferred = CoreUtils.promiseDefer();
+                this.coursesHandlers[courseId].deferred = new CorePromisedValue();
             }
 
             this.updateHandlersForCourse(courseId, accessData, navOptions, admOptions);
         }
 
-        await this.coursesHandlers[courseId].deferred.promise;
+        await this.coursesHandlers[courseId].deferred;
 
         return this.coursesHandlers[courseId].enabledHandlers;
     }
@@ -451,7 +452,7 @@ export class CoreCourseOptionsDelegateService extends CoreDelegate<CoreCourseOpt
                 handlersToDisplay.push({
                     data: data,
                     priority: handler.priority || 0,
-                    prefetch: handler.prefetch && handler.prefetch.bind(handler),
+                    prefetch: async (course) => await handler.prefetch?.(course),
                     name: handler.name,
                 });
 
@@ -483,7 +484,7 @@ export class CoreCourseOptionsDelegateService extends CoreDelegate<CoreCourseOpt
         // Load course options if missing.
         await this.loadCourseOptions(course, refresh);
 
-        return await this.hasHandlersForDefault(course.id, refresh, course.navOptions, course.admOptions);
+        return this.hasHandlersForDefault(course.id, refresh, course.navOptions, course.admOptions);
     }
 
     /**

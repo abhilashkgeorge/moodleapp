@@ -11,7 +11,7 @@
         </ion-title>
     </ion-toolbar>
 </ion-header>
-<ion-content [core-swipe-navigation]="entries">
+<ion-content [core-swipe-navigation]="entries" class="limited-width">
     <ion-refresher slot="fixed" [disabled]="!loaded" (ionRefresh)="doRefresh($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>
@@ -46,7 +46,7 @@
                     </core-format-text>
                 </ion-label>
             </ion-item>
-            <div *ngIf="entry.attachment" lines="none">
+            <div *ngIf="entry.attachment">
                 <core-file *ngFor="let file of entry.attachments" [file]="file" [component]="component" [componentId]="componentId">
                 </core-file>
             </div>

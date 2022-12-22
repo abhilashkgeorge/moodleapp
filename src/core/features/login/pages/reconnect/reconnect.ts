@@ -16,14 +16,15 @@ import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/co
 import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 
 import { CoreApp } from '@services/app';
-import { CoreSites } from '@services/sites';
+import { CoreNetwork } from '@services/network';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
 import { CoreSite, CoreSiteIdentityProvider, CoreSitePublicConfigResponse } from '@classes/site';
 import { CoreEvents } from '@singletons/events';
 import { CoreError } from '@classes/errors/error';
-import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
+import { CoreNavigator, CoreRedirectPayload } from '@services/navigator';
 import { CoreForms } from '@singletons/form';
 
 /**
@@ -48,16 +49,18 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     identityProviders?: CoreSiteIdentityProvider[];
     showForgottenPassword = true;
     showSiteAvatar = false;
+    isBrowserSSO = false;
     isOAuth = false;
     isLoggedOut: boolean;
     siteId!: string;
     showScanQR = false;
+    showLoading = true;
 
-    protected page?: string;
-    protected pageOptions?: CoreNavigationOptions;
     protected siteConfig?: CoreSitePublicConfigResponse;
     protected viewLeft = false;
     protected eventThrown = false;
+    protected redirectData?: CoreRedirectPayload;
+    protected loginSuccessful = false;
 
     constructor(
         protected fb: FormBuilder,
@@ -77,8 +80,15 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
         try {
             this.siteId = CoreNavigator.getRequiredRouteParam<string>('siteId');
 
-            this.page = CoreNavigator.getRouteParam('pageName');
-            this.pageOptions = CoreNavigator.getRouteParam('pageOptions');
+            const redirectPath = CoreNavigator.getRouteParam('redirectPath');
+            const urlToOpen = CoreNavigator.getRouteParam('urlToOpen');
+            if (redirectPath || urlToOpen) {
+                this.redirectData = {
+                    redirectPath,
+                    redirectOptions: CoreNavigator.getRouteParam('redirectOptions'),
+                    urlToOpen,
+                };
+            }
 
             const site = await CoreSites.getSite(this.siteId);
 
@@ -99,6 +109,8 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             this.showSiteAvatar = !!this.userAvatar && !CoreLoginHelper.getFixedSites();
 
             this.checkSiteConfig(site);
+
+            this.showLoading = false;
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
 
@@ -111,14 +123,23 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
      */
     ngOnDestroy(): void {
         this.viewLeft = true;
-        CoreEvents.trigger(CoreEvents.LOGIN_SITE_UNCHECKED, { config: this.siteConfig }, this.siteId);
+        CoreEvents.trigger(
+            CoreEvents.LOGIN_SITE_UNCHECKED,
+            {
+                config: this.siteConfig,
+                loginSuccessful: this.loginSuccessful,
+            },
+            this.siteId,
+        );
     }
 
     /**
      * Get some data (like identity providers) from the site config.
      */
     protected async checkSiteConfig(site: CoreSite): Promise<void> {
-        this.siteConfig = await CoreUtils.ignoreErrors(site.getPublicConfig());
+        this.siteConfig = await CoreUtils.ignoreErrors(site.getPublicConfig({
+            readingStrategy: CoreSitesReadingStrategy.PREFER_NETWORK,
+        }));
 
         if (!this.siteConfig) {
             return;
@@ -134,6 +155,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             CoreEvents.trigger(CoreEvents.LOGIN_SITE_CHECKED, { config: this.siteConfig });
         }
 
+        this.isBrowserSSO = !this.isOAuth && CoreLoginHelper.isSSOLoginNeeded(this.siteConfig.typeoflogin);
         this.showScanQR = CoreLoginHelper.displayQRInSiteScreen() ||
             CoreLoginHelper.displayQRInCredentialsScreen(this.siteConfig.tool_mobile_qrcodetype);
 
@@ -185,7 +207,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             return;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             CoreDomUtils.showErrorModal('core.networkerrormsg', true);
 
             return;
@@ -208,9 +230,11 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             this.credForm.controls['password'].reset();
 
             // Go to the site initial page.
-            this.page
-                ? await CoreNavigator.navigateToSitePath(this.page, this.pageOptions)
-                : await CoreNavigator.navigateToSiteHome();
+            this.loginSuccessful = true;
+
+            await CoreNavigator.navigateToSiteHome({
+                params: this.redirectData,
+            });
         } catch (error) {
             CoreLoginHelper.treatUserTokenError(this.siteUrl, error, this.username, password);
 
@@ -233,6 +257,23 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     }
 
     /**
+     * Open browser for SSO login.
+     */
+    openBrowserSSO(): void {
+        if (!this.siteConfig) {
+            return;
+        }
+
+        CoreLoginHelper.confirmAndOpenBrowserForSSOLogin(
+            this.siteUrl,
+            this.siteConfig.typeoflogin,
+            undefined,
+            this.siteConfig.launchurl,
+            this.redirectData,
+        );
+    }
+
+    /**
      * An OAuth button was clicked.
      *
      * @param provider The provider that was clicked.
@@ -242,8 +283,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             this.siteUrl,
             provider,
             this.siteConfig?.launchurl,
-            this.page,
-            this.pageOptions,
+            this.redirectData,
         );
 
         if (!result) {

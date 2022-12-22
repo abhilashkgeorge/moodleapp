@@ -25,6 +25,8 @@ import { CoreCustomURLSchemes } from '@services/urlschemes';
 import { CoreContentLinksHelper } from '@features/contentlinks/services/contentlinks-helper';
 import { CoreTextUtils } from '@services/utils/text';
 import { Translate } from '@singletons';
+import { CoreMainMenuDeepLinkManager } from '@features/mainmenu/classes/deep-link-manager';
+import { CoreDom } from '@singletons/dom';
 
 /**
  * Page that displays the more page of the app.
@@ -45,9 +47,10 @@ export class CoreMainMenuMorePage implements OnInit, OnDestroy {
     protected subscription!: Subscription;
     protected langObserver: CoreEventObserver;
     protected updateSiteObserver: CoreEventObserver;
+    protected resizeListener?: CoreEventObserver;
 
     constructor() {
-        this.langObserver = CoreEvents.on(CoreEvents.LANGUAGE_CHANGED, this.loadCustomMenuItems.bind(this));
+        this.langObserver = CoreEvents.on(CoreEvents.LANGUAGE_CHANGED, () => this.loadCustomMenuItems());
 
         this.updateSiteObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, async () => {
             this.customItems = await CoreMainMenu.getCustomMenuItems();
@@ -70,17 +73,22 @@ export class CoreMainMenuMorePage implements OnInit, OnDestroy {
             this.initHandlers();
         });
 
-        window.addEventListener('resize', this.initHandlers.bind(this));
+        this.resizeListener = CoreDom.onWindowResize(() => {
+            this.initHandlers();
+        });
+
+        const deepLinkManager = new CoreMainMenuDeepLinkManager();
+        deepLinkManager.treatLink();
     }
 
     /**
      * @inheritdoc
      */
     ngOnDestroy(): void {
-        window.removeEventListener('resize', this.initHandlers.bind(this));
         this.langObserver?.off();
         this.updateSiteObserver?.off();
         this.subscription?.unsubscribe();
+        this.resizeListener?.off();
     }
 
     /**
@@ -158,7 +166,7 @@ export class CoreMainMenuMorePage implements OnInit, OnDestroy {
 
             if (!treated) {
                 // Can't handle it, open it in browser.
-                CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(text);
+                CoreSites.getCurrentSite()?.openInBrowserWithAutoLogin(text);
             }
         } else {
             // It's not a URL, open it in a modal so the user can see it and copy it.

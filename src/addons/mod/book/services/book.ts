@@ -217,6 +217,22 @@ export class AddonModBookProvider {
     }
 
     /**
+     * Get last chapter viewed in the app for a book.
+     *
+     * @param id Book instance ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with last chapter viewed, undefined if none.
+     */
+    async getLastChapterViewed(id: number, siteId?: string): Promise<number | undefined> {
+        const site = await CoreSites.getSite(siteId);
+        const entry = await site.getLastViewed(AddonModBookProvider.COMPONENT, id);
+
+        const chapterId = Number(entry?.value);
+
+        return isNaN(chapterId) ? undefined : chapterId;
+    }
+
+    /**
      * Get the book toc as an array.
      *
      * @param contents The module contents.
@@ -361,6 +377,21 @@ export class AddonModBookProvider {
             { chapterid: chapterId },
             siteId,
         );
+    }
+
+    /**
+     * Store last chapter viewed in the app for a book.
+     *
+     * @param id Book instance ID.
+     * @param chapterId Chapter ID.
+     * @param courseId Course ID.
+     * @param siteId Site ID. If not defined, current site.
+     * @return Promise resolved with last chapter viewed, undefined if none.
+     */
+    async storeLastChapterViewed(id: number, chapterId: number, courseId: number, siteId?: string): Promise<void> {
+        const site = await CoreSites.getSite(siteId);
+
+        await site.storeLastViewed(AddonModBookProvider.COMPONENT, id, chapterId, { data: String(courseId) });
     }
 
 }

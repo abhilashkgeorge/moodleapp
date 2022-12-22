@@ -13,15 +13,16 @@
 // limitations under the License.
 
 import { SQLiteDB } from '@classes/sqlitedb';
+import { CoreConfig } from '@services/config';
 import { CoreSiteSchema } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
-import { AddonCalendar, AddonCalendarEventType } from '../calendar';
+import { AddonCalendar, AddonCalendarEventType, AddonCalendarProvider } from '../calendar';
 
 /**
- * Database variables for AddonDatabase service.
+ * Database variables for AddonCalendarProvider service.
  */
 export const EVENTS_TABLE = 'addon_calendar_events_3';
-export const REMINDERS_TABLE = 'addon_calendar_reminders';
+export const REMINDERS_TABLE = 'addon_calendar_reminders_2';
 export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
     name: 'AddonCalendarProvider',
     version: 4,
@@ -194,6 +195,10 @@ export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
                     name: 'time',
                     type: 'INTEGER',
                 },
+                {
+                    name: 'timecreated',
+                    type: 'INTEGER',
+                },
             ],
             uniqueKeys: [
                 ['eventid', 'time'],
@@ -216,14 +221,27 @@ export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
         }
 
         if (oldVersion < 4) {
-            // Migrate reminders. New format @since 4.0.
-            const defaultTime = await CoreUtils.ignoreErrors(AddonCalendar.getDefaultNotificationTime(siteId));
+            // Migrate default notification time if it was changed.
+            // Don't use getDefaultNotificationTime to be able to detect if the value was changed or not.
+            const key = AddonCalendarProvider.DEFAULT_NOTIFICATION_TIME_SETTING + '#' + siteId;
+            const defaultTime = await CoreUtils.ignoreErrors(CoreConfig.get(key, null));
+
             if (defaultTime) {
                 // Convert from minutes to seconds.
                 AddonCalendar.setDefaultNotificationTime(defaultTime * 60, siteId);
             }
 
-            const records = await db.getAllRecords<AddonCalendarReminderDBRecord>(REMINDERS_TABLE);
+            // Migrate reminders. New format @since 4.0.
+            const oldTable = 'addon_calendar_reminders';
+
+            try {
+                await db.tableExists(oldTable);
+            } catch (error) {
+                // Old table does not exist, ignore.
+                return;
+            }
+
+            const records = await db.getAllRecords<AddonCalendarReminderDBRecord>(oldTable);
             const events: Record<number, AddonCalendarEventDBRecord> = {};
 
             await Promise.all(records.map(async (record) => {
@@ -232,9 +250,7 @@ export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
                     try {
                         events[record.eventid] = await db.getRecord(EVENTS_TABLE, { id: record.eventid });
                     } catch {
-                        // Event not found in local DB, shouldn't happen. Delete the reminder.
-                        await db.deleteRecords(REMINDERS_TABLE, { id: record.id });
-
+                        // Event not found in local DB, shouldn't happen. Ignore the reminder.
                         return;
                     }
                 }
@@ -243,16 +259,21 @@ export const CALENDAR_SITE_SCHEMA: CoreSiteSchema = {
                     // Default reminder. Use null now.
                     record.time = null;
                 } else if (record.time > events[record.eventid].timestart) {
-                    // Reminder is after the event, delete it.
-                    await db.deleteRecords(REMINDERS_TABLE, { id: record.id });
-
+                    // Reminder is after the event, ignore it.
                     return;
                 } else {
-                    record.time = events[record.eventid].timestart - record.time;
+                    // Remove seconds from the old reminder, it could include seconds by mistake.
+                    record.time = events[record.eventid].timestart - Math.floor(record.time / 60) * 60;
                 }
 
                 return db.insertRecord(REMINDERS_TABLE, record);
             }));
+
+            try {
+                await db.dropTable(oldTable);
+            } catch (error) {
+                // Error deleting old table, ignore.
+            }
         }
     },
 };
@@ -261,7 +282,7 @@ export type AddonCalendarEventDBRecord = {
     id: number;
     name: string;
     description: string;
-    eventtype: AddonCalendarEventType;
+    eventtype: AddonCalendarEventType | string;
     timestart: number;
     timeduration: number;
     categoryid?: number;
@@ -302,4 +323,5 @@ export type AddonCalendarReminderDBRecord = {
     id: number;
     eventid: number;
     time: number | null; // Number of seconds before the event, null for default time.
+    timecreated?: number | null;
 };

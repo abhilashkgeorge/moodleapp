@@ -20,7 +20,7 @@ import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreFileUploaderStoreFilesResult } from '@features/fileuploader/services/fileuploader';
 import { CoreRatingInfo } from '@features/rating/services/rating';
 import { CoreTagItem } from '@features/tag/services/tag';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites, CoreSitesCommonWSOptions, CoreSitesReadingStrategy } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSExternalFile, CoreWSExternalWarning } from '@services/ws';
@@ -663,18 +663,17 @@ export class AddonModGlossaryProvider {
 
         // No more pages and the entry wasn't found. Reject.
         throw new CoreError('Entry not found.');
-    };
+    }
 
     /**
      * Performs the whole fetch of the entries using the proper function and arguments.
      *
      * @param fetchFunction Function to fetch.
-     * @param fetchArguments Arguments to call the fetching.
      * @param options Other options.
      * @return Promise resolved with all entrries.
      */
     fetchAllEntries(
-        fetchFunction: (options?: AddonModGlossaryGetEntriesOptions) => AddonModGlossaryGetEntriesWSResponse,
+        fetchFunction: (options?: AddonModGlossaryGetEntriesOptions) => Promise<AddonModGlossaryGetEntriesWSResponse>,
         options: CoreCourseCommonModWSOptions = {},
     ): Promise<AddonModGlossaryEntry[]> {
         options.siteId = options.siteId || CoreSites.getCurrentSiteId();
@@ -760,7 +759,7 @@ export class AddonModGlossaryProvider {
         const promises: Promise<void>[] = [];
 
         if (!onlyEntriesList) {
-            promises.push(this.fetchAllEntries(this.getEntriesByLetter.bind(this, glossary.id, 'ALL'), {
+            promises.push(this.fetchAllEntries((options) => this.getEntriesByLetter(glossary.id, 'ALL', options), {
                 cmId: glossary.coursemodule,
                 readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
                 siteId,
@@ -898,7 +897,7 @@ export class AddonModGlossaryProvider {
             return false;
         };
 
-        if (!CoreApp.isOnline() && otherOptions.allowOffline) {
+        if (!CoreNetwork.isOnline() && otherOptions.allowOffline) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -915,7 +914,14 @@ export class AddonModGlossaryProvider {
 
         try {
             // Try to add it in online.
-            return this.addEntryOnline(glossaryId, concept, definition, entryOptions, <number> attachments, otherOptions.siteId);
+            return await this.addEntryOnline(
+                glossaryId,
+                concept,
+                definition,
+                entryOptions,
+                <number> attachments,
+                otherOptions.siteId,
+            );
         } catch (error) {
             if (otherOptions.allowOffline && !CoreUtils.isWebServiceError(error)) {
                 // Couldn't connect to server, store in offline.
@@ -987,7 +993,7 @@ export class AddonModGlossaryProvider {
 
             // If we get here, there's no offline entry with this name, check online.
             // Get entries from the cache.
-            const entries = await this.fetchAllEntries(this.getEntriesByLetter.bind(glossaryId, 'ALL'), {
+            const entries = await this.fetchAllEntries((options) => this.getEntriesByLetter(glossaryId, 'ALL', options), {
                 cmId: options.cmId,
                 readingStrategy: CoreSitesReadingStrategy.PREFER_CACHE,
                 siteId: options.siteId,

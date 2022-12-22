@@ -21,12 +21,14 @@
 </ion-header>
 <ion-content>
     <core-loading [hideUntil]="loaded">
-        <core-navigation-bar [items]="navigationItems" (action)="loadSco($event)"></core-navigation-bar>
-
         <core-iframe *ngIf="loaded && src" [src]="src" [iframeWidth]="scormWidth" [iframeHeight]="scormHeight"
             [showFullscreenOnToolbar]="true" [autoFullscreenOnRotate]="true">
         </core-iframe>
 
         <p *ngIf="!src && errorMessage">{{ errorMessage | translate }}</p>
     </core-loading>
+
+    <core-navigation-bar collapsible-footer appearOnBottom *ngIf="loaded && navigationItems.length > 1" [items]="navigationItems"
+        (action)="loadSco($event)" slot="fixed">
+    </core-navigation-bar>
 </ion-content>

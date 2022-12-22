@@ -16,7 +16,7 @@ import { Type } from '@angular/core';
 
 import { CoreConstants } from '@/core/constants';
 import { CoreCourse } from '@features/course/services/course';
-import { CoreCourseModuleData } from '@features/course/services/course-helper';
+import { CoreCourseHelper, CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
 import { CoreSitePluginsModuleIndexComponent } from '@features/siteplugins/components/module-index/module-index';
 import {
@@ -56,25 +56,27 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
 
         if (initResult?.jsResult && initResult.jsResult.supportsFeature) {
             // The init result defines a function to check if a feature is supported, use it.
-            this.supportsFeature = initResult.jsResult.supportsFeature.bind(initResult.jsResult);
+            this.supportsFeature = (feature) => initResult.jsResult.supportsFeature(feature);
         }
     }
 
     /**
      * @inheritdoc
      */
-    getData(
+    async getData(
         module: CoreCourseModuleData,
         courseId: number,
         sectionId?: number,
         forCoursePage?: boolean,
-    ): CoreCourseModuleHandlerData {
+    ): Promise<CoreCourseModuleHandlerData> {
+        const icon = module.modicon || this.handlerSchema.displaydata?.icon; // Prioritize theme icon over handler icon.
+
         if (this.shouldOnlyDisplayDescription(module, forCoursePage)) {
             const title = module.description;
             module.description = '';
 
             return {
-                icon: this.getIconSrc(),
+                icon: CoreCourse.getModuleIconSrc(module.modname, icon),
                 title: title || '',
                 a11yTitle: '',
                 class: this.handlerSchema.displaydata?.class,
@@ -85,7 +87,7 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
         const showDowloadButton = this.handlerSchema.downloadbutton;
         const handlerData: CoreCourseModuleHandlerData = {
             title: module.name,
-            icon: this.getIconSrc(),
+            icon: CoreCourse.getModuleIconSrc(module.modname, icon),
             class: this.handlerSchema.displaydata?.class,
             showDownloadButton: showDowloadButton !== undefined ? showDowloadButton : hasOffline,
         };
@@ -105,7 +107,7 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
             };
         }
 
-        if (forCoursePage && this.handlerSchema.coursepagemethod && module.visibleoncoursepage !== 0) {
+        if (forCoursePage && this.handlerSchema.coursepagemethod && !CoreCourseHelper.isModuleStealth(module)) {
             // Call the method to get the course page template.
             const method = this.handlerSchema.coursepagemethod;
             this.loadCoursePageTemplate(module, courseId, handlerData, method);
@@ -196,13 +198,6 @@ export class CoreSitePluginsModuleHandler extends CoreSitePluginsBaseHandler imp
         } finally {
             handlerData.loading = false;
         }
-    }
-
-    /**
-     * @inheritdoc
-     */
-    getIconSrc(): string | undefined {
-        return this.handlerSchema.displaydata?.icon;
     }
 
     /**

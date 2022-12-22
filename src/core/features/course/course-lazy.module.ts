@@ -14,6 +14,7 @@
 
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
+import { CoreCourseHelper } from './services/course-helper';
 
 export const COURSE_INDEX_PATH = ':courseId';
 
@@ -32,9 +33,8 @@ const routes: Routes = [
         loadChildren: () => import('./pages/list-mod-type/list-mod-type.module').then(m => m.CoreCourseListModTypePageModule),
     },
     {
-        path: ':courseId/preview',
-        loadChildren: () =>
-            import('./pages/preview/preview.module').then(m => m.CoreCoursePreviewPageModule),
+        path: ':courseId/summary',
+        loadChildren: () => CoreCourseHelper.getCourseSummaryRouteModule(),
     },
 ];
 

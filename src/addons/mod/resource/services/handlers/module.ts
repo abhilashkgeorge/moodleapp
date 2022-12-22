@@ -20,6 +20,7 @@ import { CoreCourseModuleData } from '@features/course/services/course-helper';
 import { CoreCourseModuleHandler, CoreCourseModuleHandlerData } from '@features/course/services/module-delegate';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
 import { CoreFileHelper } from '@services/file-helper';
+import { CoreSites } from '@services/sites';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
@@ -69,7 +70,10 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
         sectionId?: number,
         forCoursePage?: boolean,
     ): Promise<CoreCourseModuleHandlerData> {
-        const updateStatus = (status: string): void => {
+        const openWithPicker = CoreFileHelper.defaultIsOpenWithPicker();
+
+        const handlerData = await super.getData(module, courseId, sectionId, forCoursePage);
+        handlerData.updateStatus = (status) => {
             if (!handlerData.buttons) {
                 return;
             }
@@ -77,10 +81,6 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
             handlerData.buttons[0].hidden = status !== CoreConstants.DOWNLOADED ||
                 AddonModResourceHelper.isDisplayedInIframe(module);
         };
-        const openWithPicker = CoreFileHelper.defaultIsOpenWithPicker();
-
-        const handlerData = await super.getData(module, courseId, sectionId, forCoursePage);
-        handlerData.updateStatus = updateStatus.bind(this);
         handlerData.buttons = [{
             hidden: true,
             icon: openWithPicker ? 'fas-share-square' : 'fas-file',
@@ -89,18 +89,25 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
                 const hide = await this.hideOpenButton(module);
                 if (!hide) {
                     AddonModResourceHelper.openModuleFile(module, courseId);
+
+                    CoreCourse.storeModuleViewed(courseId, module.id);
                 }
             },
         }];
 
         this.getResourceData(module, courseId, handlerData).then((extra) => {
             handlerData.extraBadge = extra;
-            handlerData.extraBadgeColor = 'light';
 
             return;
         }).catch(() => {
             // Ignore errors.
         });
+
+        try {
+            handlerData.icon = this.getIconSrc(module);
+        } catch {
+            // Ignore errors.
+        }
 
         return handlerData;
     }
@@ -212,6 +219,36 @@ export class AddonModResourceModuleHandlerService extends CoreModuleHandlerBase 
         }
 
         return extra.join(' ');
+    }
+
+    /**
+     * @inheritdoc
+     */
+    getIconSrc(module?: CoreCourseModuleData): string | undefined {
+        if (!module) {
+            return;
+        }
+
+        if (CoreSites.getCurrentSite()?.isVersionGreaterEqualThan('4.0')) {
+            return CoreCourse.getModuleIconSrc(module.modname, module.modicon);
+        }
+        let mimetypeIcon = '';
+
+        if (module.contentsinfo) {
+            // No need to use the list of files.
+            const mimetype = module.contentsinfo.mimetypes[0];
+            if (mimetype) {
+                mimetypeIcon = CoreMimetypeUtils.getMimetypeIcon(mimetype);
+            }
+
+        } else if (module.contents && module.contents[0]) {
+            const files = module.contents;
+            const file = files[0];
+
+            mimetypeIcon = CoreMimetypeUtils.getFileIcon(file.filename || '');
+        }
+
+        return CoreCourse.getModuleIconSrc(module.modname, module.modicon, mimetypeIcon);
     }
 
     /**

@@ -49,17 +49,41 @@ export class AddonBlockRecentlyAccessedItemsProvider {
             cacheKey: this.getRecentItemsCacheKey(),
         };
 
-        const items: AddonBlockRecentlyAccessedItemsItem[] =
+        let items: AddonBlockRecentlyAccessedItemsItem[] =
             await site.read('block_recentlyaccesseditems_get_recent_items', undefined, preSets);
 
-        return await Promise.all(items.map(async (item) => {
+        const cmIds: number[] = [];
+
+        items = items.map((item) => {
             const modicon = item.icon && CoreDomUtils.getHTMLElementAttribute(item.icon, 'src');
 
-            item.iconUrl = await CoreCourse.getModuleIconSrc(item.modname, modicon || undefined);
+            item.iconUrl = CoreCourse.getModuleIconSrc(item.modname, modicon || undefined);
             item.iconTitle = item.icon && CoreDomUtils.getHTMLElementAttribute(item.icon, 'title');
+            cmIds.push(item.cmid);
 
             return item;
-        }));
+        });
+
+        // Check if the viewed module should be updated for each activity.
+        const lastViewedMap = await CoreCourse.getCertainModulesViewed(cmIds, site.getId());
+
+        items.forEach((recentItem) => {
+            const timeAccess = recentItem.timeaccess * 1000;
+            const lastViewed = lastViewedMap[recentItem.cmid];
+
+            if (lastViewed && lastViewed.timeaccess >= timeAccess) {
+                return; // No need to update.
+            }
+
+            // Update access.
+            CoreCourse.storeModuleViewed(recentItem.courseid, recentItem.cmid, {
+                timeaccess: recentItem.timeaccess * 1000,
+                sectionId: lastViewed && lastViewed.sectionId,
+                siteId: site.getId(),
+            });
+        });
+
+        return items;
     }
 
     /**
@@ -79,6 +103,8 @@ export const AddonBlockRecentlyAccessedItems = makeSingleton(AddonBlockRecentlyA
 
 /**
  * Result of WS block_recentlyaccesseditems_get_recent_items.
+ *
+ * The most recently accessed activities/resources by the logged user.
  */
 export type AddonBlockRecentlyAccessedItemsItem = {
     id: number; // Id.
@@ -92,6 +118,7 @@ export type AddonBlockRecentlyAccessedItemsItem = {
     viewurl: string; // Viewurl.
     courseviewurl: string; // Courseviewurl.
     icon: string; // Icon.
+    purpose?: string; // Purpose. @since 4.0
 } & AddonBlockRecentlyAccessedItemsItemCalculatedData;
 
 /**

@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import { Injectable } from '@angular/core';
-import { ActivatedRoute, ActivatedRouteSnapshot, Params } from '@angular/router';
+import { ActivatedRoute, ActivatedRouteSnapshot, NavigationEnd, Params } from '@angular/router';
 
 import { NavigationOptions } from '@ionic/angular/providers/nav-controller';
 
@@ -27,18 +27,19 @@ import { CoreUrlUtils } from '@services/utils/url';
 import { CoreTextUtils } from '@services/utils/text';
 import { makeSingleton, NavController, Router } from '@singletons';
 import { CoreScreen } from './screen';
-import { CoreApp } from './app';
-import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
 import { CoreError } from '@classes/errors/error';
 import { CoreMainMenuDelegate } from '@features/mainmenu/services/mainmenu-delegate';
-import { CoreMainMenuHomeHandlerService } from '@features/mainmenu/services/handlers/mainmenu';
+import { CorePlatform } from '@services/platform';
+import { filter } from 'rxjs/operators';
+import { CorePromisedValue } from '@classes/promised-value';
 
 /**
  * Redirect payload.
  */
 export type CoreRedirectPayload = {
-    redirectPath: string;
-    redirectOptions?: CoreNavigationOptions;
+    redirectPath?: string; // Path of the page to redirect to.
+    redirectOptions?: CoreNavigationOptions; // Options of the navigation using redirectPath.
+    urlToOpen?: string; // URL to open instead of a page + options.
 };
 
 /**
@@ -183,7 +184,9 @@ export class CoreNavigatorService {
      * @return Whether navigation suceeded.
      */
     async navigateToSiteHome(options: Omit<CoreNavigationOptions, 'reset'> & { siteId?: string } = {}): Promise<boolean> {
-        const landingPagePath = this.getLandingTabPage();
+        const siteId = options.siteId ?? CoreSites.getCurrentSiteId();
+        const landingPagePath = CoreSites.isLoggedIn() && CoreSites.getCurrentSiteId() === siteId ?
+            this.getLandingTabPage() : 'main';
 
         return this.navigateToSitePath(landingPagePath, {
             ...options,
@@ -208,16 +211,14 @@ export class CoreNavigatorService {
 
         // If we are logged into a different site, log out first.
         if (CoreSites.isLoggedIn() && CoreSites.getCurrentSiteId() !== siteId) {
-            if (CoreSitePlugins.hasSitePluginsLoaded) {
-                // The site has site plugins so the app will be restarted. Store the data and logout.
-                CoreApp.storeRedirect(siteId, path, options || {});
+            const willReload = await CoreSites.logoutForRedirect(siteId, {
+                redirectPath: path,
+                redirectOptions: options || {},
+            });
 
-                await CoreSites.logout();
-
+            if (willReload) {
                 return true;
             }
-
-            await CoreSites.logout();
         }
 
         // If the path doesn't belong to a site, call standard navigation.
@@ -233,7 +234,10 @@ export class CoreNavigatorService {
             const modal = await CoreDomUtils.showModalLoading();
 
             try {
-                const loggedIn = await CoreSites.loadSite(siteId, path, options.params);
+                const loggedIn = await CoreSites.loadSite(siteId, {
+                    redirectPath: path,
+                    redirectOptions: options,
+                });
 
                 if (!loggedIn) {
                     // User has been redirected to the login page and will be redirected to the site path after login.
@@ -316,7 +320,7 @@ export class CoreNavigatorService {
         // Remove the parameter from our map if it's in there.
         delete this.storedParams[value];
 
-        if (!CoreApp.isMobile() && !storedParam) {
+        if (!CorePlatform.isMobile() && !storedParam) {
             // Try to retrieve the param from local storage in browser.
             const storageParam = localStorage.getItem(value);
             if (storageParam) {
@@ -560,11 +564,18 @@ export class CoreNavigatorService {
             return this.navigate(`/main/${path}`, options);
         }
 
-        // Open the path within the home tab.
-        return this.navigate(`/main/${CoreMainMenuHomeHandlerService.PAGE_NAME}`, {
+        if (this.isCurrent('/main')) {
+            // Main menu is loaded, but no tab selected yet. Wait for a tab to be loaded.
+            await this.waitForMainMenuTab();
+
+            return this.navigate(`/main/${this.getCurrentMainMenuTab()}/${path}`, options);
+        }
+
+        // Open the path within in main menu.
+        return this.navigate('/main', {
             ...options,
             params: {
-                redirectPath: `/main/${CoreMainMenuHomeHandlerService.PAGE_NAME}/${path}`,
+                redirectPath: path,
                 redirectOptions: options.params || options.nextNavigation ? options : undefined,
             } as CoreRedirectPayload,
         });
@@ -602,7 +613,7 @@ export class CoreNavigatorService {
             this.storedParams[id] = value;
             queryParams[name] = id;
 
-            if (!CoreApp.isMobile()) {
+            if (!CorePlatform.isMobile()) {
                 // In browser, save the param in local storage to be able to retrieve it if the app is refreshed.
                 localStorage.setItem(id, JSON.stringify(value));
             }
@@ -654,6 +665,62 @@ export class CoreNavigatorService {
         } else {
             return parentPath + '/' + routePath;
         }
+    }
+
+    /**
+     * Check if the current route page can block leaving the route.
+     *
+     * @return Whether the current route page can block leaving the route.
+     */
+    currentRouteCanBlockLeave(): boolean {
+        return !!this.getCurrentRoute().snapshot.routeConfig?.canDeactivate?.length;
+    }
+
+    /**
+     * Wait for a main menu tab route to be loaded.
+     *
+     * @return Promise resolved when the route is loaded.
+     */
+    protected waitForMainMenuTab(): Promise<void> {
+        if (this.getCurrentMainMenuTab()) {
+            return Promise.resolve();
+        }
+
+        const promise = new CorePromisedValue<void>();
+
+        const navSubscription = Router.events
+            .pipe(filter(event => event instanceof NavigationEnd))
+            .subscribe(() => {
+                if (this.getCurrentMainMenuTab()) {
+                    navSubscription?.unsubscribe();
+                    promise.resolve();
+                }
+            });
+
+        return promise;
+    }
+
+    /**
+     * Get the relative path to a parent path.
+     * E.g. if parent path is '/foo' and current path is '/foo/bar/baz' it will return '../../'.
+     *
+     * @param parentPath Parent path.
+     * @return Relative path to the parent, empty if same path or parent path not found.
+     * @todo If messaging is refactored to use list managers, this function might not be needed anymore.
+     */
+    getRelativePathToParent(parentPath: string): string {
+        // Add an ending slash to avoid collisions with other routes (e.g. /foo and /foobar).
+        parentPath = CoreTextUtils.addEndingSlash(parentPath);
+
+        const path = this.getCurrentPath();
+        const parentRouteIndex = path.indexOf(parentPath);
+        if (parentRouteIndex === -1) {
+            return '';
+        }
+
+        const depth = (path.substring(parentRouteIndex + parentPath.length - 1).match(/\//g) ?? []).length;
+
+        return '../'.repeat(depth);
     }
 
 }

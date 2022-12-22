@@ -9,7 +9,7 @@
         </ion-title>
     </ion-toolbar>
 </ion-header>
-<ion-content [core-swipe-navigation]="badges">
+<ion-content [core-swipe-navigation]="badges" class="limited-width">
     <ion-refresher slot="fixed" [disabled]="!badgeLoaded" (ionRefresh)="refreshBadges($event.target)">
         <ion-refresher-content pullingText="{{ 'core.pulltorefresh' | translate }}"></ion-refresher-content>
     </ion-refresher>

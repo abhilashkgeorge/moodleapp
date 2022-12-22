@@ -44,6 +44,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     @Input() onlinePlayerUrl?: string; // The URL of the online player to display the H5P package.
     @Input() trackComponent?: string; // Component to send xAPI events to.
     @Input() contextId?: number; // Context ID. Required for tracking.
+    @Input() enableInAppFullscreen?: boolean; // Whether to enable our custom in-app fullscreen feature.
     @Output() onIframeUrlSet = new EventEmitter<{src: string; online: boolean}>();
     @Output() onIframeLoaded = new EventEmitter<void>();
 
@@ -128,7 +129,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                     CoreH5PCore.DISPLAY_OPTION_DOWNLOAD + '=0',
                 );
 
-                // Get auto-login URL so the user is automatically authenticated.
+                // Get auto-login URL so the user is automatically authenticated if needed.
                 const url = await this.site.getAutoLoginUrl(src, false);
 
                 // Add the preventredirect param so the user can authenticate.

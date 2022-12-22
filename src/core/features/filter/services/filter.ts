@@ -14,9 +14,9 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreApp } from '@services/app';
-import { CoreSites } from '@services/sites';
-import { CoreSite } from '@classes/site';
+import { CoreNetwork } from '@services/network';
+import { CoreSites, CoreSitesReadingStrategy } from '@services/sites';
+import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreWSExternalWarning } from '@services/ws';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreFilterDelegate } from './filter-delegate';
@@ -284,13 +284,15 @@ export class CoreFilterProvider {
         const data: CoreFiltersGetAvailableInContextWSParams = {
             contexts: contextsToSend,
         };
-        const preSets = {
+        const preSets: CoreSiteWSPreSets = {
             cacheKey: this.getAvailableInContextsCacheKey(contextsToSend),
             updateFrequency: CoreSite.FREQUENCY_RARELY,
             splitRequest: {
                 param: 'contexts',
                 maxLength: 300,
             },
+            // Use stale while revalidate, but always use the first value. If data is updated it will be stored in DB.
+            ...CoreSites.getReadingStrategyPreSets(CoreSitesReadingStrategy.STALE_WHILE_REVALIDATE),
         };
 
         const result = await site.read<CoreFilterGetAvailableInContextResult>(
@@ -338,7 +340,7 @@ export class CoreFilterProvider {
 
         // Check if we have the contexts in the memory cache.
         const siteContexts = this.contextsCache[site.getId()];
-        const isOnline = CoreApp.isOnline();
+        const isOnline = CoreNetwork.isOnline();
         const result: CoreFilterClassifiedFilters = {};
         let allFound = true;
 

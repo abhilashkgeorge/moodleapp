@@ -13,16 +13,16 @@
 // limitations under the License.
 
 import { Component, ViewChild, OnInit, OnDestroy } from '@angular/core';
-import { CoreAnimations } from '@components/animations';
 import { CoreSendMessageFormComponent } from '@components/send-message-form/send-message-form';
 import { CanLeave } from '@guards/can-leave';
 import { IonContent } from '@ionic/angular';
 import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
-import { Network, NgZone, Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import { AddonModChatUsersModalComponent, AddonModChatUsersModalResult } from '../../components/users-modal/users-modal';
@@ -35,7 +35,6 @@ import { AddonModChatFormattedMessage, AddonModChatHelper } from '../../services
 @Component({
     selector: 'page-addon-mod-chat-chat',
     templateUrl: 'chat.html',
-    animations: [CoreAnimations.SLIDE_IN_OUT],
     styleUrls: ['chat.scss'],
 })
 export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
@@ -65,11 +64,11 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
 
     constructor() {
         this.currentUserId = CoreSites.getCurrentSiteUserId();
-        this.isOnline = CoreApp.isOnline();
-        this.onlineSubscription = Network.onChange().subscribe(() => {
+        this.isOnline = CoreNetwork.isOnline();
+        this.onlineSubscription = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
+                this.isOnline = CoreNetwork.isOnline();
             });
         });
     }
@@ -159,7 +158,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
         this.messages[this.messages.length - 1].showTail = true;
 
         // New messages or beeps, scroll to bottom.
-        setTimeout(() => this.scrollToBottom());
+        this.scrollToBottom();
     }
 
     protected async loadMessageBeepWho(message: AddonModChatFormattedMessage): Promise<void> {
@@ -221,7 +220,7 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
             }
 
             return id;
-        } catch (error) {
+        } catch {
             // Ignore errors.
             return id;
         }
@@ -341,13 +340,12 @@ export class AddonModChatChatPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Scroll bottom when render has finished.
      */
-    scrollToBottom(): void {
+    async scrollToBottom(): Promise<void> {
         // Need a timeout to leave time to the view to be rendered.
-        setTimeout(() => {
-            if (!this.viewDestroyed) {
-                this.content?.scrollToBottom();
-            }
-        });
+        await CoreUtils.nextTick();
+        if (!this.viewDestroyed) {
+            this.content?.scrollToBottom();
+        }
     }
 
     /**

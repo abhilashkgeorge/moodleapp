@@ -34,8 +34,13 @@ import { CoreFileEntry } from '@services/file-helper';
 import { CoreConstants } from '@/core/constants';
 import { CoreWindow } from '@singletons/window';
 import { CoreColors } from '@singletons/colors';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
+import { CoreErrorWithOptions } from '@classes/errors/errorwithtitle';
+import { CoreFilepool } from '@services/filepool';
+import { CoreSites } from '@services/sites';
 
-type TreeNode<T> = T & { children: TreeNode<T>[] };
+export type TreeNode<T> = T & { children: TreeNode<T>[] };
 
 /*
  * "Utils" service with helper functions.
@@ -48,7 +53,8 @@ export class CoreUtilsProvider {
     protected logger: CoreLogger;
     protected iabInstance?: InAppBrowserObject;
     protected uniqueIds: {[name: string]: number} = {};
-    protected qrScanData?: {deferred: PromiseDefer<string>; observable: Subscription};
+    protected qrScanData?: {deferred: CorePromisedValue<string>; observable: Subscription};
+    protected initialColorSchemeContent = 'light dark';
 
     constructor() {
         this.logger = CoreLogger.getInstance('CoreUtilsProvider');
@@ -78,12 +84,12 @@ export class CoreUtilsProvider {
      * @param promises Promises.
      * @return Promise resolved if all promises are resolved and rejected if at least 1 promise fails.
      */
-    async allPromises(promises: Promise<unknown>[]): Promise<void> {
+    async allPromises(promises: unknown[]): Promise<void> {
         if (!promises || !promises.length) {
-            return Promise.resolve();
+            return;
         }
 
-        const getPromiseError = async (promise): Promise<Error | void> => {
+        const getPromiseError = async (promise: unknown): Promise<Error | void> => {
             try {
                 await promise;
             } catch (error) {
@@ -261,6 +267,24 @@ export class CoreUtilsProvider {
         if (this.iabInstance) {
             this.iabInstance.close();
         }
+    }
+
+    /**
+     * Get inapp browser instance (if any).
+     *
+     * @return IAB instance, undefined if not open.
+     */
+    getInAppBrowserInstance(): InAppBrowserObject | undefined  {
+        return this.iabInstance;
+    }
+
+    /**
+     * Check if inapp browser is open.
+     *
+     * @return Whether it's open.
+     */
+    isInAppBrowserOpen(): boolean {
+        return !!this.iabInstance;
     }
 
     /**
@@ -483,9 +507,9 @@ export class CoreUtilsProvider {
      * @param ...args All the params sent after checkAll will be passed to isEnabledFn.
      * @return Promise resolved with the list of enabled sites.
      */
-    filterEnabledSites<P extends unknown[]>(
+    async filterEnabledSites<P extends unknown[]>(
         siteIds: string[],
-        isEnabledFn: (siteId, ...args: P) => boolean | Promise<boolean>,
+        isEnabledFn: (siteId: string, ...args: P) => boolean | Promise<boolean>,
         checkAll?: boolean,
         ...args: P
     ): Promise<string[]> {
@@ -504,16 +528,14 @@ export class CoreUtilsProvider {
             }
         }
 
-        return this.allPromises(promises).catch(() => {
-            // Ignore errors.
-        }).then(() => {
-            if (!checkAll) {
-                // Checking 1 was enough, so it will either return all the sites or none.
-                return enabledSites.length ? siteIds : [];
-            } else {
-                return enabledSites;
-            }
-        });
+        await CoreUtils.ignoreErrors(this.allPromises(promises));
+
+        if (!checkAll) {
+            // Checking 1 was enough, so it will either return all the sites or none.
+            return enabledSites.length ? siteIds : [];
+        } else {
+            return enabledSites;
+        }
     }
 
     /**
@@ -559,18 +581,30 @@ export class CoreUtilsProvider {
         const mapDepth = {};
         const tree: TreeNode<T>[] = [];
 
+        // Create a map first to avoid problems with not sorted.
         list.forEach((node: TreeNode<T>, index): void => {
             const id = node[idFieldName];
-            const parent = node[parentFieldName];
-            node.children = [];
 
-            if (!id || !parent) {
+            if (id === undefined) {
+                this.logger.error(`Node with incorrect ${idFieldName}:${id} found on formatTree`);
+            }
+
+            if (node.children === undefined) {
+                node.children = [];
+            }
+            map[id] = index;
+        });
+
+        list.forEach((node: TreeNode<T>): void => {
+            const id = node[idFieldName];
+            const parent = node[parentFieldName];
+
+            if (id === undefined || parent === undefined) {
                 this.logger.error(`Node with incorrect ${idFieldName}:${id} or ${parentFieldName}:${parent} found on formatTree`);
             }
 
             // Use map to look-up the parents.
-            map[id] = index;
-            if (parent != rootParentId) {
+            if (parent !== rootParentId) {
                 const parentNode = list[map[parent]] as TreeNode<T>;
                 if (parentNode) {
                     if (mapDepth[parent] == maxDepth) {
@@ -624,21 +658,21 @@ export class CoreUtilsProvider {
      *
      * @return Promise resolved with the list of countries.
      */
-    getCountryList(): Promise<Record<string, string>> {
+    async getCountryList(): Promise<Record<string, string>> {
         // Get the keys of the countries.
-        return this.getCountryKeysList().then((keys) => {
-            // Now get the code and the translated name.
-            const countries = {};
+        const keys = await this.getCountryKeysList();
 
-            keys.forEach((key) => {
-                if (key.indexOf('assets.countries.') === 0) {
-                    const code = key.replace('assets.countries.', '');
-                    countries[code] = Translate.instant(key);
-                }
-            });
+        // Now get the code and the translated name.
+        const countries: Record<string, string> = {};
 
-            return countries;
+        keys.forEach((key) => {
+            if (key.indexOf('assets.countries.') === 0) {
+                const code = key.replace('assets.countries.', '');
+                countries[code] = Translate.instant(key);
+            }
         });
+
+        return countries;
     }
 
     /**
@@ -646,18 +680,14 @@ export class CoreUtilsProvider {
      *
      * @return Promise resolved with the list of countries.
      */
-    getCountryListSorted(): Promise<CoreCountry[]> {
+    async getCountryListSorted(): Promise<CoreCountry[]> {
         // Get the keys of the countries.
-        return this.getCountryList().then((countries) => {
-            // Sort translations.
-            const sortedCountries: { code: string; name: string }[] = [];
+        const countries = await this.getCountryList();
 
-            Object.keys(countries).sort((a, b) => countries[a].localeCompare(countries[b])).forEach((key) => {
-                sortedCountries.push({ code: key, name: countries[key] });
-            });
-
-            return sortedCountries;
-        });
+        // Sort translations.
+        return Object.keys(countries)
+            .sort((a, b) => countries[a].localeCompare(countries[b]))
+            .map((code) => ({ code, name: countries[code] }));
     }
 
     /**
@@ -665,11 +695,13 @@ export class CoreUtilsProvider {
      *
      * @return Promise resolved with the countries list. Rejected if not translated.
      */
-    protected getCountryKeysList(): Promise<string[]> {
+    protected async getCountryKeysList(): Promise<string[]> {
         // It's possible that the current language isn't translated, so try with default language first.
         const defaultLang = CoreLang.getDefaultLanguage();
 
-        return this.getCountryKeysListForLanguage(defaultLang).catch(() => {
+        try {
+            return await this.getCountryKeysListForLanguage(defaultLang);
+        } catch {
             // Not translated, try to use the fallback language.
             const fallbackLang = CoreLang.getFallbackLanguage();
 
@@ -679,7 +711,7 @@ export class CoreUtilsProvider {
             }
 
             return this.getCountryKeysListForLanguage(fallbackLang);
-        });
+        }
     }
 
     /**
@@ -717,17 +749,19 @@ export class CoreUtilsProvider {
      * @param url The URL of the file.
      * @return Promise resolved with the mimetype.
      */
-    getMimeTypeFromUrl(url: string): Promise<string> {
+    async getMimeTypeFromUrl(url: string): Promise<string> {
         // First check if it can be guessed from the URL.
         const extension = CoreMimetypeUtils.guessExtensionFromUrl(url);
-        const mimetype = extension && CoreMimetypeUtils.getMimeType(extension);
+        let mimetype = extension && CoreMimetypeUtils.getMimeType(extension);
 
         if (mimetype) {
-            return Promise.resolve(mimetype);
+            return mimetype;
         }
 
         // Can't be guessed, get the remote mimetype.
-        return CoreWS.getRemoteFileMimeType(url).then(mimetype => mimetype || '');
+        mimetype = await CoreWS.getRemoteFileMimeType(url);
+
+        return mimetype || '';
     }
 
     /**
@@ -757,7 +791,7 @@ export class CoreUtilsProvider {
     /**
      * Check if an unknown value is a FileEntry.
      *
-     * @param value Value to check.
+     * @param file Object to check.
      * @return Type guard indicating if the file is a FileEntry.
      */
     valueIsFileEntry(file: unknown): file is FileEntry {
@@ -858,11 +892,17 @@ export class CoreUtilsProvider {
      */
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     isWebServiceError(error: any): boolean {
-        return error && (error.warningcode !== undefined || (error.errorcode !== undefined &&
-                error.errorcode != 'userdeleted' && error.errorcode != 'upgraderunning' &&
+        return error && (
+            error.warningcode !== undefined ||
+            (
+                error.errorcode !== undefined && error.errorcode != 'userdeleted' && error.errorcode != 'upgraderunning' &&
                 error.errorcode != 'forcepasswordchangenotice' && error.errorcode != 'usernotfullysetup' &&
                 error.errorcode != 'sitepolicynotagreed' && error.errorcode != 'sitemaintenance' &&
-                !this.isExpiredTokenError(error)));
+                error.errorcode != 'wsaccessusersuspended' && error.errorcode != 'wsaccessuserdeleted' &&
+                !this.isExpiredTokenError(error)
+            ) ||
+            error.status && error.status >= 400 // CoreHttpError, assume status 400 and above are like WebService errors.
+        );
     }
 
     /**
@@ -951,6 +991,23 @@ export class CoreUtilsProvider {
             this.openInApp(path);
 
             return;
+        } else if (extension === 'apk' && CoreApp.isAndroid()) {
+            const url = await CoreUtils.ignoreErrors(
+                CoreFilepool.getFileUrlByPath(CoreSites.getCurrentSiteId(), CoreFile.removeBasePath(path)),
+            );
+
+            // @todo MOBILE-4167: Handle urls with expired tokens.
+
+            throw new CoreErrorWithOptions(
+                Translate.instant('core.cannotinstallapk'),
+                undefined,
+                url
+                    ? [{
+                        text: Translate.instant('core.openinbrowser'),
+                        handler: () => this.openInBrowser(url),
+                    }]
+                    : undefined,
+            );
         }
 
         // Path needs to be decoded, the file won't be opened if the path has %20 instead of spaces and so.
@@ -1005,15 +1062,14 @@ export class CoreUtilsProvider {
 
         this.setInAppBrowserToolbarColors(options);
 
+        this.iabInstance?.close(); // Close window if there is one already open, only allow one.
+
         this.iabInstance = InAppBrowser.create(url, '_blank', options);
 
-        if (CoreApp.isMobile()) {
-            let loadStopSubscription;
+        if (CorePlatform.isMobile()) {
             const loadStartUrls: string[] = [];
 
-            // Trigger global events when a url is loaded or the window is closed. This is to make it work like in Ionic 1.
             const loadStartSubscription = this.iabInstance.on('loadstart').subscribe((event) => {
-                // Execute the callback in the Angular zone, so change detection doesn't stop working.
                 NgZone.run(() => {
                     // Store the last loaded URLs (max 10).
                     loadStartUrls.push(event.url);
@@ -1025,25 +1081,26 @@ export class CoreUtilsProvider {
                 });
             });
 
-            if (CoreApp.isAndroid()) {
-                // Load stop is needed with InAppBrowser v3. Custom URL schemes no longer trigger load start, simulate it.
-                loadStopSubscription = this.iabInstance.on('loadstop').subscribe((event) => {
-                    // Execute the callback in the Angular zone, so change detection doesn't stop working.
-                    NgZone.run(() => {
-                        if (loadStartUrls.indexOf(event.url) == -1) {
-                            // The URL was stopped but not started, probably a custom URL scheme.
-                            CoreEvents.trigger(CoreEvents.IAB_LOAD_START, event);
-                        }
-                    });
+            const loadStopSubscription = this.iabInstance.on('loadstop').subscribe((event) => {
+                NgZone.run(() => {
+                    CoreEvents.trigger(CoreEvents.IAB_LOAD_STOP, event);
                 });
-            }
+            });
+
+            const messageSubscription = this.iabInstance.on('message').subscribe((event) => {
+                NgZone.run(() => {
+                    CoreEvents.trigger(CoreEvents.IAB_MESSAGE, event.data);
+                });
+            });
 
             const exitSubscription = this.iabInstance.on('exit').subscribe((event) => {
-                // Execute the callback in the Angular zone, so change detection doesn't stop working.
                 NgZone.run(() => {
                     loadStartSubscription.unsubscribe();
-                    loadStopSubscription && loadStopSubscription.unsubscribe();
+                    loadStopSubscription.unsubscribe();
+                    messageSubscription.unsubscribe();
                     exitSubscription.unsubscribe();
+
+                    this.iabInstance = undefined;
                     CoreEvents.trigger(CoreEvents.IAB_EXIT, event);
                 });
             });
@@ -1105,7 +1162,7 @@ export class CoreUtilsProvider {
     async openInBrowser(url: string, options: CoreUtilsOpenInBrowserOptions = {}): Promise<void> {
         if (options.showBrowserWarning || options.showBrowserWarning === undefined) {
             try {
-                await CoreWindow.confirmOpenBrowserIfNeeded(url);
+                await CoreWindow.confirmOpenBrowserIfNeeded(options.browserWarningUrl ?? url);
             } catch (error) {
                 return; // Cancelled, stop.
             }
@@ -1318,18 +1375,13 @@ export class CoreUtilsProvider {
     }
 
     /**
-     * Similar to AngularJS $q.defer().
+     * Create a deferred promise that can be resolved or rejected explicitly.
      *
      * @return The deferred promise.
+     * @deprecated since app 4.1. Use CorePromisedValue instead.
      */
-    promiseDefer<T>(): PromiseDefer<T> {
-        const deferred: Partial<PromiseDefer<T>> = {};
-        deferred.promise = new Promise((resolve, reject): void => {
-            deferred.resolve = resolve as (value?: T | undefined) => void;
-            deferred.reject = reject;
-        });
-
-        return deferred as PromiseDefer<T>;
+    promiseDefer<T>(): CorePromisedValue<T> {
+        return new CorePromisedValue<T>();
     }
 
     /**
@@ -1540,7 +1592,6 @@ export class CoreUtilsProvider {
     /**
      * Debounce a function so consecutive calls are ignored until a certain time has passed since the last call.
      *
-     * @param context The context to apply to the function.
      * @param fn Function to debounce.
      * @param delay Time that must pass until the function is called.
      * @return Debounced function.
@@ -1558,12 +1609,37 @@ export class CoreUtilsProvider {
     }
 
     /**
+     * Throttle a function so consecutive calls are ignored until a certain time has passed since the last executed call.
+     *
+     * @param fn Function to throttle.
+     * @param duration Time that must pass until the function is called.
+     * @return Throttled function.
+     */
+    throttle<T extends unknown[]>(fn: (...args: T) => unknown, duration: number): (...args: T) => void {
+        let shouldWait = false;
+
+        const throttled = (...args: T): void => {
+            if (!shouldWait) {
+                fn.apply(null, args);
+
+                shouldWait = true;
+
+                setTimeout(() => {
+                    shouldWait = false;
+                }, duration);
+            }
+        };
+
+        return throttled;
+    }
+
+    /**
      * Check whether the app can scan QR codes.
      *
      * @return Whether the app can scan QR codes.
      */
     canScanQR(): boolean {
-        return CoreApp.isMobile();
+        return CorePlatform.isMobile();
     }
 
     /**
@@ -1573,7 +1649,7 @@ export class CoreUtilsProvider {
      * @return Promise resolved with the captured text or undefined if cancelled or error.
      */
     async scanQR(title?: string): Promise<string | undefined> {
-        return await CoreDomUtils.openModal<string>({
+        return CoreDomUtils.openModal<string>({
             component: CoreViewerQRScannerComponent,
             cssClass: 'core-modal-fullscreen',
             componentProps: {
@@ -1588,7 +1664,7 @@ export class CoreUtilsProvider {
      * @return Promise resolved with the QR string, rejected if error or cancelled.
      */
     async startScanQR(): Promise<string | undefined> {
-        if (!CoreApp.isMobile()) {
+        if (!CorePlatform.isMobile()) {
             return Promise.reject('QRScanner isn\'t available in browser.');
         }
 
@@ -1604,12 +1680,12 @@ export class CoreUtilsProvider {
 
             if (this.qrScanData && this.qrScanData.deferred) {
                 // Already scanning.
-                return this.qrScanData.deferred.promise;
+                return this.qrScanData.deferred;
             }
 
             // Start scanning.
             this.qrScanData = {
-                deferred: this.promiseDefer(),
+                deferred: new CorePromisedValue(),
 
                 // When text is received, stop scanning and return the text.
                 observable: QRScanner.scan().subscribe(text => this.stopScanQR(text, false)),
@@ -1621,7 +1697,14 @@ export class CoreUtilsProvider {
 
                 document.body.classList.add('core-scanning-qr');
 
-                return this.qrScanData.deferred.promise;
+                // Set color-scheme to 'normal', otherwise the camera isn't seen in Android.
+                const colorSchemeMeta = document.querySelector('meta[name="color-scheme"]');
+                if (colorSchemeMeta) {
+                    this.initialColorSchemeContent = colorSchemeMeta.getAttribute('content') || this.initialColorSchemeContent;
+                    colorSchemeMeta.setAttribute('content', 'normal');
+                }
+
+                return this.qrScanData.deferred;
             } catch (e) {
                 this.stopScanQR(e, true);
 
@@ -1649,13 +1732,17 @@ export class CoreUtilsProvider {
 
         // Hide camera preview.
         document.body.classList.remove('core-scanning-qr');
+
+        // Set color-scheme to the initial value.
+        document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', this.initialColorSchemeContent);
+
         QRScanner.hide();
         QRScanner.destroy();
 
         this.qrScanData.observable.unsubscribe(); // Stop scanning.
 
         if (error) {
-            this.qrScanData.deferred.reject(data);
+            this.qrScanData.deferred.reject(typeof data === 'string' ? new Error(data) : data);
         } else if (data !== undefined) {
             this.qrScanData.deferred.resolve(data as string);
         } else {
@@ -1669,7 +1756,7 @@ export class CoreUtilsProvider {
      * Ignore errors from a promise.
      *
      * @param promise Promise to ignore errors.
-     * @param fallbackResult Value to return if the promise is rejected.
+     * @param fallback Value to return if the promise is rejected.
      * @return Promise with ignored errors, resolving to the fallback result if provided.
      */
     async ignoreErrors<Result>(promise: Promise<Result>): Promise<Result | undefined>;
@@ -1728,30 +1815,6 @@ export class CoreUtilsProvider {
 export const CoreUtils = makeSingleton(CoreUtilsProvider);
 
 /**
- * Deferred promise. It's similar to the result of $q.defer() in AngularJS.
- */
-export type PromiseDefer<T> = {
-    /**
-     * The promise.
-     */
-    promise: Promise<T>;
-
-    /**
-     * Function to resolve the promise.
-     *
-     * @param value The resolve value.
-     */
-    resolve: (value?: T) => void; // Function to resolve the promise.
-
-    /**
-     * Function to reject the promise.
-     *
-     * @param reason The reject param.
-     */
-    reject: (reason?: unknown) => void;
-};
-
-/**
  * Data for each entry of executeOrderedPromises.
  */
 export type OrderedPromiseData = {
@@ -1794,6 +1857,7 @@ export type CoreUtilsOpenFileOptions = {
  */
 export type CoreUtilsOpenInBrowserOptions = {
     showBrowserWarning?: boolean; // Whether to display a warning before opening in browser. Defaults to true.
+    browserWarningUrl?: string; // The URL to display in the warning message. Use it to hide sensitive information.
 };
 
 /**

@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import moment from 'moment';
+import moment from 'moment-timezone';
 
 import { CoreConstants } from '@/core/constants';
 
 import { CoreTime } from './time';
+import { CoreBrowser } from '@singletons/browser';
 
 /**
  * Method to warn that logs are disabled, called only once.
@@ -67,7 +68,10 @@ export class CoreLogger {
      */
     static getInstance(className: string): CoreLogger {
         // Disable log on production and testing.
-        if (CoreConstants.BUILD.isProduction || CoreConstants.BUILD.isTesting) {
+        if (
+            !CoreBrowser.hasDevelopmentSetting('LoggingEnabled') &&
+            (CoreConstants.BUILD.isProduction || CoreConstants.BUILD.isTesting)
+        ) {
             if (CoreConstants.BUILD.isProduction) {
                 warnLogsDisabled();
             }
@@ -82,15 +86,15 @@ export class CoreLogger {
 
         return new CoreLogger(
             // eslint-disable-next-line no-console
-            CoreLogger.prepareLogFn(console.log.bind(console), className),
+            CoreLogger.prepareLogFn((...data) => console.log(...data), className),
             // eslint-disable-next-line no-console
-            CoreLogger.prepareLogFn(console.info.bind(console), className),
+            CoreLogger.prepareLogFn((...data) => console.info(...data), className),
             // eslint-disable-next-line no-console
-            CoreLogger.prepareLogFn(console.warn.bind(console), className),
+            CoreLogger.prepareLogFn((...data) => console.warn(...data), className),
             // eslint-disable-next-line no-console
-            CoreLogger.prepareLogFn(console.debug.bind(console), className),
+            CoreLogger.prepareLogFn((...data) => console.debug(...data), className),
             // eslint-disable-next-line no-console
-            CoreLogger.prepareLogFn(console.error.bind(console), className),
+            CoreLogger.prepareLogFn((...data) => console.error(...data), className),
         );
     }
 

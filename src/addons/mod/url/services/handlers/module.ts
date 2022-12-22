@@ -55,7 +55,7 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
     /**
      * @inheritdoc
      */
-    async getData(module: CoreCourseModuleData): Promise<CoreCourseModuleHandlerData> {
+    getData(module: CoreCourseModuleData): CoreCourseModuleHandlerData {
 
         /**
          * Open the URL.
@@ -63,7 +63,7 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
          * @param module The module object.
          * @param courseId The course ID.
          */
-        const openUrl = async (module: CoreCourseModuleData): Promise<void> => {
+        const openUrl = async (module: CoreCourseModuleData, courseId: number): Promise<void> => {
             try {
                 if (module.instance) {
                     await AddonModUrl.logView(module.instance, module.name);
@@ -73,12 +73,14 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
                 // Ignore errors.
             }
 
+            CoreCourse.storeModuleViewed(courseId, module.id);
+
             const contents = await CoreCourse.getModuleContents(module);
             AddonModUrlHelper.open(contents[0].fileurl);
         };
 
         const handlerData: CoreCourseModuleHandlerData = {
-            icon: await CoreCourse.getModuleIconSrc(module.modname, module.modicon),
+            icon: CoreCourse.getModuleIconSrc(module.modname, module.modicon),
             title: module.name,
             class: 'addon-mod_url-handler',
             showDownloadButton: false,
@@ -89,7 +91,7 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
                     const shouldOpen = await this.shouldOpenLink(module);
 
                     if (shouldOpen) {
-                        openUrl(module);
+                        openUrl(module, courseId);
                     } else {
                         this.openActivityPage(module, module.course, options);
                     }
@@ -101,13 +103,13 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
                 hidden: true, // Hide it until we calculate if it should be displayed or not.
                 icon: 'fas-link',
                 label: 'core.openmodinbrowser',
-                action: (event: Event, module: CoreCourseModuleData): void => {
-                    openUrl(module);
+                action: (event: Event, module: CoreCourseModuleData, courseId: number): void => {
+                    openUrl(module, courseId);
                 },
             }],
         };
 
-        this.hideLinkButton(module).then(async (hideButton) => {
+        this.hideLinkButton(module).then((hideButton) => {
             if (!handlerData.buttons) {
                 return;
             }
@@ -118,7 +120,7 @@ export class AddonModUrlModuleHandlerService extends CoreModuleHandlerBase imple
                 const icon = AddonModUrl.guessIcon(module.contents[0].fileurl);
 
                 // Calculate the icon to use.
-                handlerData.icon = await CoreCourse.getModuleIconSrc(module.modname, module.modicon, icon);
+                handlerData.icon = CoreCourse.getModuleIconSrc(module.modname, module.modicon, icon);
             }
 
             return;

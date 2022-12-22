@@ -19,6 +19,9 @@ import { CoreApp } from '@services/app';
 import { CoreAnyError, CoreError } from '@classes/errors/error';
 import { Geolocation, Diagnostic, makeSingleton } from '@singletons';
 import { CoreUtils } from './utils/utils';
+import { CorePlatform } from './platform';
+import { CoreSilentError } from '@classes/errors/silenterror';
+import { CoreSubscriptions } from '@singletons/subscriptions';
 
 @Injectable({ providedIn: 'root' })
 export class CoreGeolocationProvider {
@@ -97,7 +100,7 @@ export class CoreGeolocationProvider {
                 }
             // Fall through.
             case Diagnostic.permissionStatus.NOT_REQUESTED:
-                await Diagnostic.requestLocationAuthorization();
+                await this.requestLocationAuthorization();
                 await CoreApp.waitForResume(500);
                 await this.doAuthorizeLocation(true);
 
@@ -133,6 +136,24 @@ export class CoreGeolocationProvider {
         return CoreUtils.promiseWorks(Diagnostic.getLocationAuthorizationStatus());
     }
 
+    /**
+     * Request and return the location authorization status for the application.
+     */
+    protected async requestLocationAuthorization(): Promise<void> {
+        if (!CoreApp.isIOS()) {
+            await Diagnostic.requestLocationAuthorization();
+
+            return;
+        }
+
+        // In iOS, the modal disappears when the screen is locked and the promise never ends. Treat that case.
+        return new Promise((resolve, reject) => {
+            // Don't display an error if app is sent to the background, just finish the process.
+            const unsubscribe = CoreSubscriptions.once(CorePlatform.pause, () => reject(new CoreSilentError()));
+            Diagnostic.requestLocationAuthorization().then(() => resolve(), reject).finally(() => unsubscribe());
+        });
+    }
+
 }
 
 export const CoreGeolocation = makeSingleton(CoreGeolocationProvider);
@@ -164,4 +185,4 @@ interface GeolocationPositionError {
     PERMISSION_DENIED: number; // eslint-disable-line @typescript-eslint/naming-convention
     POSITION_UNAVAILABLE: number; // eslint-disable-line @typescript-eslint/naming-convention
     TIMEOUT: number; // eslint-disable-line @typescript-eslint/naming-convention
-};
+}

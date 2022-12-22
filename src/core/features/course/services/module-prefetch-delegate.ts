@@ -33,7 +33,7 @@ import { CoreError } from '@classes/errors/error';
 import { CoreWSFile, CoreWSExternalWarning } from '@services/ws';
 import { CHECK_UPDATES_TIMES_TABLE, CoreCourseCheckUpdatesDBRecord } from './database/module-prefetch';
 import { CoreFileSizeSum } from '@services/plugin-file-delegate';
-import { CoreCourseModuleData } from './course-helper';
+import { CoreCourseHelper, CoreCourseModuleData } from './course-helper';
 
 const ROOT_CACHE_KEY = 'mmCourse:';
 
@@ -61,7 +61,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
      * Initialize.
      */
     initialize(): void {
-        CoreEvents.on(CoreEvents.LOGOUT, this.clearStatusCache.bind(this));
+        CoreEvents.on(CoreEvents.LOGOUT, () => this.clearStatusCache());
 
         CoreEvents.on(CoreEvents.PACKAGE_STATUS_CHANGED, (data) => {
             this.updateStatusCache(data.status, data.component, data.componentId);
@@ -103,7 +103,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
         }
 
         if (handler.canUseCheckUpdates) {
-            return await handler.canUseCheckUpdates(module, courseId);
+            return handler.canUseCheckUpdates(module, courseId);
         }
 
         // By default, modules can use check updates.
@@ -482,23 +482,17 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
      * @return Promise resolved with the total size (0 if unknown)
      */
     async getModuleStoredSize(module: CoreCourseAnyModuleData, courseId: number): Promise<number> {
-        let downloadedSize = await this.getModuleDownloadedSize(module, courseId);
-
-        if (isNaN(downloadedSize)) {
-            downloadedSize = 0;
-        }
-
         const site = CoreSites.getCurrentSite();
         const handler = this.getPrefetchHandlerFor(module.modname);
-        if (!handler || !site) {
-            // If there is no handler then we can't find out the component name.
-            // We can't work out the cached size, so just return downloaded size.
-            return downloadedSize;
-        }
 
-        const cachedSize = await site.getComponentCacheSize(handler.component, module.id);
+        const [downloadedSize, cachedSize] = await Promise.all([
+            this.getModuleDownloadedSize(module, courseId),
+            handler && site ? site.getComponentCacheSize(handler.component, module.id) : 0,
+        ]);
 
-        return cachedSize + downloadedSize;
+        const totalSize = cachedSize + downloadedSize;
+
+        return isNaN(totalSize) ? 0 : totalSize;
     }
 
     /**
@@ -516,7 +510,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
 
         if (handler?.getFiles) {
             // The handler defines a function to get files, use it.
-            return await handler.getFiles(module, courseId);
+            return handler.getFiles(module, courseId);
         } else if (handler?.loadContents) {
             // The handler defines a function to load contents, use it before returning module contents.
             await handler.loadContents(module, courseId);
@@ -778,13 +772,17 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
             return { status: CoreConstants.NOT_DOWNLOADABLE };
         }
 
-        // Get the stored data to get the status and downloadTime.
-        const data = await CoreFilepool.getPackageData(siteId, handler.component, module.id);
+        try {
+            // Get the stored data to get the status and downloadTime.
+            const data = await CoreFilepool.getPackageData(siteId, handler.component, module.id);
 
-        return {
-            status: data.status || CoreConstants.NOT_DOWNLOADED,
-            downloadTime: data.downloadTime || 0,
-        };
+            return {
+                status: data.status || CoreConstants.NOT_DOWNLOADED,
+                downloadTime: data.downloadTime || 0,
+            };
+        } catch {
+            return { status: CoreConstants.NOT_DOWNLOADED };
+        }
     }
 
     /**
@@ -956,7 +954,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
      * @return Promise resolved with true if downloadable, false otherwise.
      */
     async isModuleDownloadable(module: CoreCourseAnyModuleData, courseId: number): Promise<boolean> {
-        if ('uservisible' in module && module.uservisible === false) {
+        if ('uservisible' in module && !CoreCourseHelper.canUserViewModule(module)) {
             // Module isn't visible by the user, cannot be downloaded.
             return false;
         }
@@ -1002,7 +1000,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
 
         if (handler?.hasUpdates) {
             // Handler implements its own function to check the updates, use it.
-            return await handler.hasUpdates(module, courseId, moduleUpdates);
+            return handler.hasUpdates(module, courseId, moduleUpdates);
         } else if (!moduleUpdates || !moduleUpdates.updates || !moduleUpdates.updates.length) {
             // Module doesn't have any update.
             return false;
@@ -1047,13 +1045,13 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
      * @param courseId Course ID the module belongs to.
      * @return Promise resolved when finished.
      */
-    syncModules(modules: CoreCourseModuleData[], courseId: number): Promise<unknown> {
-        return Promise.all(modules.map(async (module) => {
-            await this.syncModule(module, courseId);
-
+    async syncModules(modules: CoreCourseModuleData[], courseId: number): Promise<void> {
+        try {
+            await Promise.all(modules.map((module) => this.syncModule(module, courseId)));
+        } finally {
             // Invalidate course updates.
             await CoreUtils.ignoreErrors(this.invalidateCourseUpdates(courseId));
-        }));
+        }
     }
 
     /**
@@ -1252,7 +1250,7 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
         // Treat warnings, adding the not supported modules.
         response.warnings?.forEach((warning) => {
             if (warning.warningcode == 'missingcallback') {
-                result[warning.itemid!] = false;
+                result[warning.itemid || -1] = false;
             }
         });
 
@@ -1304,10 +1302,10 @@ export class CoreCourseModulePrefetchDelegateService extends CoreDelegate<CoreCo
         this.statusCache.invalidate(packageId);
         this.statusCache.setValue(packageId, 'status', status);
 
-        if (sectionId) {
+        if (courseId && sectionId) {
             const data: CoreEventSectionStatusChangedData = {
                 sectionId,
-                courseId: courseId!,
+                courseId: courseId,
             };
             CoreEvents.trigger(CoreEvents.SECTION_STATUS_CHANGED, data, CoreSites.getCurrentSiteId());
         }
@@ -1367,8 +1365,10 @@ export interface CoreCourseModulePrefetchHandler extends CoreDelegateHandler {
     /**
      * If true, this module will be treated as not downloadable when determining the status of a list of modules. The module will
      * still be downloaded when downloading the section/course, it only affects whether the button should be displayed.
+     *
+     * @depracated since app 4.0.
      */
-    skipListStatus: boolean;
+    skipListStatus?: boolean;
 
     /**
      * Get the download size of a module.

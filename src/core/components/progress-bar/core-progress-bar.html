@@ -4,8 +4,8 @@
     </progress>
     <div class="core-progress-text">
         <span class="sr-only" *ngIf="a11yText">{{ a11yText | translate }}</span>
-        {{ 'core.percentagenumber' | translate: {$a: text} }}
+        {{ text }}
     </div>
 </ng-container>
 
-<ion-progress-bar *ngIf="progress < 0" type="indeterminate"></ion-progress-bar>
+<ion-progress-bar *ngIf="progress < 0" [color]="color" type="indeterminate"></ion-progress-bar>

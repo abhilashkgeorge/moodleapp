@@ -24,8 +24,10 @@ import { CoreConstants } from '@/core/constants';
 import { CoreError } from '@classes/errors/error';
 
 import { CoreLogger } from '@singletons/logger';
-import { makeSingleton, File, Zip, Platform, WebView } from '@singletons';
+import { makeSingleton, File, Zip, WebView } from '@singletons';
 import { CoreFileEntry } from '@services/file-helper';
+import { CoreText } from '@singletons/text';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Progress event used when writing a file data into a file.
@@ -135,7 +137,7 @@ export class CoreFileProvider {
             return;
         }
 
-        await Platform.ready();
+        await CorePlatform.ready();
 
         if (CoreApp.isAndroid()) {
             this.basePath = File.externalApplicationStorageDirectory || this.basePath;
@@ -215,8 +217,7 @@ export class CoreFileProvider {
     ): Promise<FileEntry | DirectoryEntry> {
         await this.init();
 
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
         base = base || this.basePath;
 
         if (path.indexOf('/') == -1) {
@@ -278,8 +279,7 @@ export class CoreFileProvider {
     async removeDir(path: string): Promise<void> {
         await this.init();
 
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
         this.logger.debug('Remove directory: ' + path);
 
         await File.removeRecursively(this.basePath, path);
@@ -294,8 +294,7 @@ export class CoreFileProvider {
     async removeFile(path: string): Promise<void> {
         await this.init();
 
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
         this.logger.debug('Remove file: ' + path);
 
         try {
@@ -331,8 +330,7 @@ export class CoreFileProvider {
     async getDirectoryContents(path: string): Promise<(FileEntry | DirectoryEntry)[]> {
         await this.init();
 
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
         this.logger.debug('Get contents of dir: ' + path);
 
         const result = await File.listDir(this.basePath, path);
@@ -400,8 +398,7 @@ export class CoreFileProvider {
      * @return Promise to be resolved when the size is calculated.
      */
     getDirectorySize(path: string): Promise<number> {
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
 
         this.logger.debug('Get size of dir: ' + path);
 
@@ -415,8 +412,7 @@ export class CoreFileProvider {
      * @return Promise to be resolved when the size is calculated.
      */
     getFileSize(path: string): Promise<number> {
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
 
         this.logger.debug('Get size of file: ' + path);
 
@@ -489,8 +485,7 @@ export class CoreFileProvider {
         if (!folder) {
             folder = this.basePath;
 
-            // Remove basePath if it's in the path.
-            path = this.removeStartingSlash(path.replace(this.basePath, ''));
+            path = this.removeBasePath(path);
         }
 
         this.logger.debug(`Read file ${path} with format ${format} in folder ${folder}`);
@@ -591,8 +586,7 @@ export class CoreFileProvider {
     async writeFile(path: string, data: string | Blob, append?: boolean): Promise<FileEntry> {
         await this.init();
 
-        // Remove basePath if it's in the path.
-        path = this.removeStartingSlash(path.replace(this.basePath, ''));
+        path = this.removeBasePath(path);
         this.logger.debug('Write file: ' + path);
 
         // Create file (and parent folders) to prevent errors.
@@ -832,15 +826,14 @@ export class CoreFileProvider {
             return this.copyOrMoveExternalFile(from, to, copy);
         }
 
-        const moveCopyFn: MoveCopyFunction = copy ?
-            (isDir ? File.copyDir.bind(File.instance) : File.copyFile.bind(File.instance)) :
-            (isDir ? File.moveDir.bind(File.instance) : File.moveFile.bind(File.instance));
+        const moveCopyFn: MoveCopyFunction = (...args) => copy ?
+            (isDir ? File.copyDir(...args) : File.copyFile(...args)) :
+            (isDir ? File.moveDir(...args) : File.moveFile(...args));
 
         await this.init();
 
-        // Paths cannot start with "/". Remove basePath if present.
-        from = this.removeStartingSlash(from.replace(this.basePath, ''));
-        to = this.removeStartingSlash(to.replace(this.basePath, ''));
+        from = this.removeBasePath(from);
+        to = this.removeBasePath(to);
 
         const toFileAndDir = this.getFileAndDirectoryFromPath(to);
 
@@ -852,14 +845,16 @@ export class CoreFileProvider {
         try {
             const entry = await moveCopyFn(this.basePath, from, this.basePath, to);
 
-            return entry;
+            return <FileEntry | DirectoryEntry> entry;
         } catch (error) {
             // The copy can fail if the path has encoded characters. Try again if that's the case.
             const decodedFrom = decodeURI(from);
             const decodedTo = decodeURI(to);
 
             if (from != decodedFrom || to != decodedTo) {
-                return moveCopyFn(this.basePath, decodedFrom, this.basePath, decodedTo);
+                const entry = await moveCopyFn(this.basePath, decodedFrom, this.basePath, decodedTo);
+
+                return <FileEntry | DirectoryEntry> entry;
             } else {
                 return Promise.reject(error);
             }
@@ -916,22 +911,18 @@ export class CoreFileProvider {
         if (path.indexOf(this.basePath) > -1) {
             return path;
         } else {
-            return CoreTextUtils.concatenatePaths(this.basePath, path);
+            return CoreText.concatenatePaths(this.basePath, path);
         }
     }
 
     /**
-     * Remove the base path from a path. If basePath isn't found, return false.
+     * Remove the base path from a path.
      *
      * @param path Path to treat.
-     * @return Path without basePath if basePath was found, undefined otherwise.
+     * @return Path without basePath.
      */
     removeBasePath(path: string): string {
-        if (path.indexOf(this.basePath) > -1) {
-            return path.replace(this.basePath, '');
-        }
-
-        return path;
+        return CoreText.removeStartingSlash(path.replace(this.basePath, ''));
     }
 
     /**
@@ -1032,13 +1023,10 @@ export class CoreFileProvider {
      *
      * @param path Path.
      * @return Path without a slash in the first position.
+     * @deprecated since 4.1. Use CoreText.removeStartingSlash instead.
      */
     removeStartingSlash(path: string): string {
-        if (path[0] == '/') {
-            return path.substring(1);
-        }
-
-        return path;
+        return CoreText.removeStartingSlash(path);
     }
 
     /**
@@ -1203,7 +1191,7 @@ export class CoreFileProvider {
             });
 
             await Promise.all(promises);
-        } catch (error) {
+        } catch {
             // Ignore errors, maybe it doesn't exist.
         }
     }
@@ -1245,7 +1233,7 @@ export class CoreFileProvider {
      */
     getWWWAbsolutePath(): string {
         if (window.cordova && cordova.file && cordova.file.applicationDirectory) {
-            return CoreTextUtils.concatenatePaths(cordova.file.applicationDirectory, 'www');
+            return CoreText.concatenatePaths(cordova.file.applicationDirectory, 'www');
         }
 
         // Cannot use Cordova to get it, use the WebView URL.
@@ -1260,7 +1248,7 @@ export class CoreFileProvider {
      * @return Converted src.
      */
     convertFileSrc(src: string): string {
-        return CoreApp.isMobile() ? WebView.convertFileSrc(src) : src;
+        return CorePlatform.isMobile() ? WebView.convertFileSrc(src) : src;
     }
 
     /**
@@ -1270,7 +1258,7 @@ export class CoreFileProvider {
      * @return Unconverted src.
      */
     unconvertFileSrc(src: string): string {
-        if (!CoreApp.isMobile()) {
+        if (!CorePlatform.isMobile()) {
             return src;
         }
 
@@ -1305,4 +1293,4 @@ export class CoreFileProvider {
 
 export const CoreFile = makeSingleton(CoreFileProvider);
 
-type MoveCopyFunction = (path: string, dirName: string, newPath: string, newDirName: string) => Promise<FileEntry | DirectoryEntry>;
+type MoveCopyFunction = (path: string, name: string, newPath: string, newName: string) => Promise<Entry>;

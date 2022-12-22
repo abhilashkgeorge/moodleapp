@@ -14,7 +14,6 @@
 
 import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
-import { CoreAnimations } from '@components/animations';
 import { ActivatedRoute } from '@angular/router';
 import { CoreSites } from '@services/sites';
 import {
@@ -30,9 +29,9 @@ import {
 import { IonContent, IonRefresher } from '@ionic/angular';
 import { ContextLevel, CoreConstants } from '@/core/constants';
 import { CoreNavigator } from '@services/navigator';
-import { Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { CoreUser } from '@features/user/services/user';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreError } from '@classes/errors/error';
@@ -40,7 +39,10 @@ import { CoreCommentsOffline } from '@features/comments/services/comments-offlin
 import { CoreCommentsDBRecord } from '@features/comments/services/database/comments';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreApp } from '@services/app';
-import moment from 'moment';
+import { CoreNetwork } from '@services/network';
+import moment from 'moment-timezone';
+import { Subscription } from 'rxjs';
+import { CoreAnimations } from '@components/animations';
 
 /**
  * Page that displays comments.
@@ -73,13 +75,15 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
     hasOffline = false;
     refreshIcon = CoreConstants.ICON_LOADING;
     syncIcon = CoreConstants.ICON_LOADING;
-    offlineComment?: CoreCommentsOfflineWithUser;
+    offlineComment?: CoreCommentsOfflineWithUser & { pending?: boolean };
     currentUserId: number;
     sending = false;
     newComment = '';
+    isOnline: boolean;
 
     protected addDeleteCommentsAvailable = false;
     protected syncObserver?: CoreEventObserver;
+    protected onlineObserver: Subscription;
     protected viewDestroyed = false;
 
     constructor(
@@ -104,6 +108,14 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
                 this.fetchComments(false);
             }
         }, CoreSites.getCurrentSiteId());
+
+        this.isOnline = CoreNetwork.isOnline();
+        this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
+            // Execute the callback in the Angular zone, so change detection doesn't stop working.
+            NgZone.run(() => {
+                this.isOnline = CoreNetwork.isOnline();
+            });
+        });
     }
 
     /**
@@ -210,13 +222,15 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
      * @param infiniteComplete Infinite scroll complete function. Only used from core-infinite-loading.
      * @return Resolved when done.
      */
-    loadPrevious(infiniteComplete?: () => void): Promise<void> {
+    async loadPrevious(infiniteComplete?: () => void): Promise<void> {
         this.page++;
         this.canLoadMore = false;
 
-        return this.fetchComments(true).finally(() => {
+        try {
+            await this.fetchComments(true);
+        } finally {
             infiniteComplete && infiniteComplete();
-        });
+        }
     }
 
     /**
@@ -305,7 +319,7 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
             CoreDomUtils.showToast(
                 commentsResponse ? 'core.comments.eventcommentcreated' : 'core.datastoredoffline',
                 true,
-                3000,
+                ToastDuration.LONG,
             );
 
             if (commentsResponse) {
@@ -347,13 +361,9 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
     /**
      * Delete a comment.
      *
-     * @param e Click event.
      * @param comment Comment to delete.
      */
-    async deleteComment(e: Event, comment: CoreCommentsDataToDisplay | CoreCommentsOfflineWithUser): Promise<void> {
-        e.preventDefault();
-        e.stopPropagation();
-
+    async deleteComment(comment: CoreCommentsDataToDisplay | CoreCommentsOfflineWithUser): Promise<void> {
         const modified = 'lastmodified' in comment
             ? comment.lastmodified
             : comment.timecreated;
@@ -407,7 +417,7 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
 
             this.invalidateComments();
 
-            CoreDomUtils.showToast('core.comments.eventcommentdeleted', true, 3000);
+            CoreDomUtils.showToast('core.comments.eventcommentdeleted', true, ToastDuration.LONG);
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'Delete comment failed.');
         }
@@ -515,15 +525,16 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
         ).then(async (offlineComment) => {
             this.offlineComment = offlineComment;
 
-            if (!offlineComment) {
+            if (!this.offlineComment) {
                 return;
             }
 
             if (this.newComment == '') {
-                this.newComment = this.offlineComment!.content;
+                this.newComment = this.offlineComment.content;
             }
 
-            this.offlineComment!.userid = this.currentUserId;
+            this.offlineComment.userid = this.currentUserId;
+            this.offlineComment.pending = true;
 
             return;
         }));
@@ -559,13 +570,9 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
     /**
      * Restore a comment.
      *
-     * @param e Click event.
      * @param comment Comment to delete.
      */
-    async undoDeleteComment(e: Event, comment: CoreCommentsDataToDisplay): Promise<void> {
-        e.preventDefault();
-        e.stopPropagation();
-
+    async undoDeleteComment(comment: CoreCommentsDataToDisplay): Promise<void> {
         await CoreCommentsOffline.undoDeleteComment(comment.id);
 
         comment.deleted = false;
@@ -596,6 +603,7 @@ export class CoreCommentsViewerPage implements OnInit, OnDestroy {
      */
     ngOnDestroy(): void {
         this.syncObserver?.off();
+        this.onlineObserver.unsubscribe();
         this.viewDestroyed = true;
     }
 

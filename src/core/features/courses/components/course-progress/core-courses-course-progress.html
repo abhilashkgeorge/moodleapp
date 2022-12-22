@@ -3,8 +3,7 @@
         [style.background-color]="course.color">
         <img *ngIf="course.courseImage" [src]="course.courseImage" core-external-content alt="" />
     </div>
-    <ion-item button lines="none" (click)="openCourse()" [attr.aria-label]="course.displayname || course.fullname"
-        class="core-course-header" [class.item-disabled]="course.visible == 0"
+    <ion-item button (click)="openCourse()" [attr.aria-label]="course.displayname || course.fullname" class="core-course-header"
         [class.core-course-only-title]="!showAll || progress < 0 && completionUserTracked === false" detail="false">
         <ion-label class="ion-text-wrap core-course-title"
             [class.core-course-with-buttons]="courseOptionMenuEnabled || (downloadCourseEnabled && showDownload)"
@@ -33,8 +32,8 @@
 
         <div class="core-button-spinner" *ngIf="downloadCourseEnabled && !courseOptionMenuEnabled && showDownload" slot="end">
             <core-download-refresh [status]="prefetchCourseData.status" [enabled]="downloadCourseEnabled"
-                [statusTranslatable]="prefetchCourseData.statusTranslatable" canTrustDownload="false" [loading]="prefetchCourseData.loading"
-                (action)="prefetchCourse()"></core-download-refresh>
+                [statusTranslatable]="prefetchCourseData.statusTranslatable" [canTrustDownload]="false"
+                [loading]="prefetchCourseData.loading" (action)="prefetchCourse()"></core-download-refresh>
         </div>
 
         <div class="core-button-spinner" *ngIf="courseOptionMenuEnabled" slot="end">
@@ -44,16 +43,16 @@
 
             <!-- Downloaded icon. -->
             <ion-icon *ngIf="downloadCourseEnabled && prefetchCourseData.downloadSucceeded && !showSpinner" class="core-icon-downloaded"
-                name="cloud-done" color="success" role="status" [attr.aria-label]="'core.downloaded' | translate"></ion-icon>
+                name="fam-cloud-done" color="success" role="status" [attr.aria-label]="'core.downloaded' | translate"></ion-icon>
 
             <!-- Options menu. -->
-            <ion-button fill="clear" color="dark" (click)="showCourseOptionsMenu($event)" *ngIf="!showSpinner"
+            <ion-button fill="clear" (click)="showCourseOptionsMenu($event)" *ngIf="!showSpinner"
                 [attr.aria-label]="('core.displayoptions' | translate)">
                 <ion-icon name="ellipsis-vertical" slot="icon-only" aria-hidden="true"></ion-icon>
             </ion-button>
         </div>
     </ion-item>
-    <ion-item *ngIf="showAll && progress >= 0 && completionUserTracked !== false" lines="none" class="core-course-progress">
+    <ion-item *ngIf="showAll && progress >= 0 && completionUserTracked !== false" class="core-course-progress">
         <ion-label>
             <core-progress-bar [progress]="progress" a11yText="core.courses.aria:courseprogress"></core-progress-bar>
         </ion-label>

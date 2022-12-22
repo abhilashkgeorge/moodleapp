@@ -1,7 +1,7 @@
 <div class="addon-mod_forum-post">
-    <ng-container *ngIf="!formData.isEditing || !showForm">
+    <ng-container *ngIf="!formData.isEditing || !showForm">
         <ion-card-header class="ion-text-wrap ion-no-padding" id="addon-mod_forum-post-{{post.id}}">
-            <ion-item class="ion-text-wrap" [class.highlight]="highlight" lines="none">
+            <ion-item class="ion-text-wrap" [class.highlight]="highlight">
                 <ion-label>
                     <div class="addon-mod-forum-post-title" *ngIf="displaySubject">
                         <h2 class="ion-text-wrap">
@@ -19,8 +19,8 @@
                             [attr.aria-label]="'addon.mod_forum.unread' | translate">
                             <ion-icon name="fas-circle" color="primary" aria-hidden="true"></ion-icon>
                         </ion-note>
-                        <ion-button *ngIf="optionsMenuEnabled" fill="clear" color="dark"
-                            [attr.aria-label]="('core.displayoptions' | translate)" (click)="showOptionsMenu($event)">
+                        <ion-button *ngIf="optionsMenuEnabled" fill="clear" [attr.aria-label]="('core.displayoptions' | translate)"
+                            (click)="showOptionsMenu($event)">
                             <ion-icon name="ellipsis-vertical" slot="icon-only" aria-hidden="true">
                             </ion-icon>
                         </ion-button>
@@ -31,7 +31,7 @@
                         </core-user-avatar>
                         <div class="addon-mod-forum-post-author">
                             <span *ngIf="post.author && post.author.fullname">{{post.author.fullname}}</span>
-                            <p *ngIf="post.author && post.author.groups">
+                            <p *ngIf="post.author && post.author.groups" class="core-groupname">
                                 <ng-container *ngFor="let group of post.author.groups">
                                     <ion-icon name="fas-users" [attr.aria-label]="'addon.mod_forum.group' | translate">
                                     </ion-icon> {{ group.name }}
@@ -47,8 +47,8 @@
                                 [attr.aria-label]="'addon.mod_forum.unread' | translate">
                                 <ion-icon name="fas-circle" color="primary" aria-hidden="true"></ion-icon>
                             </ion-note>
-                            <ion-button *ngIf="optionsMenuEnabled" fill="clear" color="dark"
-                                [attr.aria-label]="('core.displayoptions' | translate)" (click)="showOptionsMenu($event)">
+                            <ion-button *ngIf="optionsMenuEnabled" fill="clear" [attr.aria-label]="('core.displayoptions' | translate)"
+                                (click)="showOptionsMenu($event)">
                                 <ion-icon name="ellipsis-vertical" slot="icon-only" aria-hidden="true"></ion-icon>
                             </ion-button>
                         </ng-container>
@@ -63,13 +63,16 @@
             <core-format-text [component]="component" [componentId]="componentId" [text]="post.message" contextLevel="module"
                 [contextInstanceId]="forum && forum.cmid" [courseId]="courseId">
             </core-format-text>
-            <div lines="none" *ngIf="post.attachments && post.attachments.length > 0">
+            <p *ngIf="post.haswordcount && post.wordcount">
+                <em>{{ 'core.numwords' | translate: {'$a': post.wordcount} }}</em>
+            </p>
+            <div *ngIf="post.attachments && post.attachments.length > 0">
                 <core-files [files]="post.attachments" [component]="component" [componentId]="componentId" showInline="true">
                 </core-files>
             </div>
         </ion-card-content>
         <div class="addon-mod-forum-post-more-info">
-            <ion-item class="ion-text-wrap" *ngIf="tagsEnabled && post.tags && post.tags.length > 0" lines="none">
+            <ion-item class="ion-text-wrap" *ngIf="tagsEnabled && post.tags && post.tags.length > 0">
                 <div slot="start">{{ 'core.tag.tags' | translate }}:</div>
                 <ion-label>
                     <core-tag-list [tags]="post.tags"></core-tag-list>
@@ -135,13 +138,13 @@
         <ion-grid>
             <ion-row>
                 <ion-col>
+                    <ion-button expand="block" fill="outline" (click)="cancel()">{{ 'core.cancel' | translate }}</ion-button>
+                </ion-col>
+                <ion-col>
                     <ion-button expand="block" (click)="send()" [disabled]="formData.subject == '' || formData.message == null">
                         <span *ngIf="formData.isEditing">{{ 'core.savechanges' | translate }}</span>
                         <span *ngIf="!formData.isEditing">{{ 'addon.mod_forum.posttoforum' | translate }}</span>
                     </ion-button>
-                </ion-col>
-                <ion-col>
-                    <ion-button expand="block" color="light" (click)="cancel()">{{ 'core.cancel' | translate }}</ion-button>
                 </ion-col>
             </ion-row>
         </ion-grid>

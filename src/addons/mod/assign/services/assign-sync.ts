@@ -35,7 +35,7 @@ import {
 import { CoreSync } from '@services/sync';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreUtils } from '@services/utils/utils';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreGradesFormattedItem, CoreGradesHelper } from '@features/grades/services/grades-helper';
 import { AddonModAssignSubmissionDelegate } from './submission-delegate';
@@ -108,7 +108,7 @@ export class AddonModAssignSyncProvider extends CoreCourseActivitySyncBaseProvid
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllAssignments(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('all assignments', this.syncAllAssignmentsFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('all assignments', (siteId) => this.syncAllAssignmentsFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -215,7 +215,7 @@ export class AddonModAssignSyncProvider extends CoreCourseActivitySyncBaseProvid
             return result;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // Cannot sync in offline.
             throw new CoreNetworkError();
         }

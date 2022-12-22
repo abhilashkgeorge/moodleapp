@@ -24,7 +24,7 @@ import { TranslateHttpLoader } from '@ngx-translate/http-loader';
 import { IonicModule, IonicRouteStrategy } from '@ionic/angular';
 
 import { CoreModule } from '@/core/core.module';
-import { AddonsModule } from '@/addons/addons.module';
+import { AddonsModule } from '@addons/addons.module';
 
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './app-routing.module';
@@ -32,6 +32,7 @@ import { JitCompilerFactory } from '@angular/platform-browser-dynamic';
 import { CoreCronDelegate } from '@services/cron';
 import { CoreSiteInfoCronHandler } from '@services/handlers/site-info-cron';
 import { moodleTransitionAnimation } from '@classes/page-transition';
+import { TestingModule } from '@/testing/testing.module';
 
 // For translate loader. AoT requires an exported function for factories.
 export function createTranslateLoader(http: HttpClient): TranslateHttpLoader {
@@ -59,6 +60,7 @@ export function createTranslateLoader(http: HttpClient): TranslateHttpLoader {
         AppRoutingModule,
         CoreModule,
         AddonsModule,
+        TestingModule,
     ],
     providers: [
         { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },

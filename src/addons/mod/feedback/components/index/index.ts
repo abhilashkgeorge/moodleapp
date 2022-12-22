@@ -82,6 +82,7 @@ export class AddonModFeedbackIndexComponent extends CoreCourseModuleMainActivity
 
     protected submitObserver: CoreEventObserver;
     protected syncEventName = AddonModFeedbackSyncProvider.AUTO_SYNCED;
+    protected checkCompletionAfterLog = false;
 
     constructor(
         protected content?: IonContent,
@@ -97,7 +98,7 @@ export class AddonModFeedbackIndexComponent extends CoreCourseModuleMainActivity
 
             this.tabsLoaded.analysis = false;
             this.tabsLoaded.overview = false;
-            this.loaded = false;
+            this.showLoading = true;
 
             // Prefetch data if needed.
             if (!data.offline && this.isPrefetched()) {
@@ -125,13 +126,20 @@ export class AddonModFeedbackIndexComponent extends CoreCourseModuleMainActivity
 
         try {
             await this.loadContent(false, true);
-
-            if (this.feedback) {
-                CoreUtils.ignoreErrors(AddonModFeedback.logView(this.feedback.id, this.feedback.name));
-            }
         } finally {
             this.tabsReady = true;
         }
+    }
+
+    /**
+     * @inheritdoc
+     */
+    protected async logActivity(): Promise<void> {
+        if (!this.feedback) {
+            return; // Shouldn't happen.
+        }
+
+        await AddonModFeedback.logView(this.feedback.id, this.feedback.name);
     }
 
     /**
@@ -172,7 +180,7 @@ export class AddonModFeedbackIndexComponent extends CoreCourseModuleMainActivity
     /**
      * @inheritdoc
      */
-    protected async fetchContent(refresh: boolean = false, sync: boolean = false, showErrors: boolean = false): Promise<void> {
+    protected async fetchContent(refresh?: boolean, sync = false, showErrors = false): Promise<void> {
         try {
             this.feedback = await AddonModFeedback.getFeedback(this.courseId, this.module.id);
 
@@ -201,9 +209,6 @@ export class AddonModFeedbackIndexComponent extends CoreCourseModuleMainActivity
 
             await this.fetchFeedbackOverviewData();
         } finally {
-            // Now fill the context menu.
-            this.fillContextMenu(refresh);
-
             if (this.feedback) {
                 // Check if there are responses stored in offline.
                 this.hasOffline = await AddonModFeedbackOffline.hasFeedbackOfflineData(this.feedback.id);

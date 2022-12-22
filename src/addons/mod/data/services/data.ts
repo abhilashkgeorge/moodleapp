@@ -19,7 +19,7 @@ import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreRatingInfo } from '@features/rating/services/rating';
 import { CoreTagItem } from '@features/tag/services/tag';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFileEntry } from '@services/file-helper';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites, CoreSitesCommonWSOptions, CoreSitesReadingStrategy } from '@services/sites';
@@ -136,7 +136,7 @@ export class AddonModDataProvider {
         };
 
         // Checks to store offline.
-        if (!CoreApp.isOnline() || forceOffline) {
+        if (!CoreNetwork.isOnline() || forceOffline) {
             const notifications = this.checkFields(fields, contents);
             if (notifications.length > 0) {
                 return { fieldnotifications: notifications };
@@ -147,7 +147,7 @@ export class AddonModDataProvider {
         await this.deleteEntryOfflineAction(dataId, entryId, AddonModDataAction.ADD, siteId);
 
         // App is offline, store the action.
-        if (!CoreApp.isOnline() || forceOffline) {
+        if (!CoreNetwork.isOnline() || forceOffline) {
             return storeOffline();
         }
 
@@ -234,7 +234,7 @@ export class AddonModDataProvider {
             return;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -333,7 +333,7 @@ export class AddonModDataProvider {
             return;
         }
 
-        if (!CoreApp.isOnline()) {
+        if (!CoreNetwork.isOnline()) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -436,7 +436,7 @@ export class AddonModDataProvider {
             };
         };
 
-        if (!CoreApp.isOnline() || forceOffline) {
+        if (!CoreNetwork.isOnline() || forceOffline) {
             const notifications = this.checkFields(fields, contents);
             if (notifications.length > 0) {
                 return { fieldnotifications: notifications };
@@ -446,7 +446,7 @@ export class AddonModDataProvider {
         // Remove unnecessary not synced actions.
         await this.deleteEntryOfflineAction(dataId, entryId, AddonModDataAction.EDIT, siteId);
 
-        if (!CoreApp.isOnline() || forceOffline) {
+        if (!CoreNetwork.isOnline() || forceOffline) {
             // App is offline, store the action.
             return storeOffline();
         }
@@ -987,7 +987,7 @@ export class AddonModDataProvider {
 
         options.groupId = options.groupId || 0;
         options.sort = options.sort || 0;
-        options.order || options.order || 'DESC';
+        options.order = options.order || 'DESC';
         options.page = options.page || 0;
         options.perPage = options.perPage || AddonModDataProvider.PER_PAGE;
         options.readingStrategy = options.readingStrategy || CoreSitesReadingStrategy.PREFER_NETWORK;
@@ -1134,10 +1134,10 @@ export type AddonModDataEntryField = {
     fieldid: number; // The field type of the content.
     recordid: number; // The record this content belongs to.
     content: string; // Contents.
-    content1: string; // Contents.
-    content2: string; // Contents.
-    content3: string; // Contents.
-    content4: string; // Contents.
+    content1: string | null; // Contents.
+    content2: string | null; // Contents.
+    content3: string | null; // Contents.
+    content4: string | null; // Contents.
     files: CoreFileEntry[];
 };
 

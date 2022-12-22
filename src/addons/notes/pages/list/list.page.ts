@@ -23,7 +23,7 @@ import { CoreUser, CoreUserProfile } from '@features/user/services/user';
 import { IonContent, IonRefresher } from '@ionic/angular';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
-import { CoreDomUtils } from '@services/utils/dom';
+import { CoreDomUtils, ToastDuration } from '@services/utils/dom';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
@@ -54,6 +54,7 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
     currentUserId!: number;
 
     protected syncObserver!: CoreEventObserver;
+    protected logAfterFetch = true;
 
     constructor() {
         try {
@@ -91,8 +92,6 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
      */
     async ngOnInit(): Promise<void> {
         await this.fetchNotes(true);
-
-        CoreUtils.ignoreErrors(AddonNotes.logView(this.courseId, this.userId));
     }
 
     /**
@@ -127,6 +126,11 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
                 this.user = await CoreUser.getProfile(this.userId, this.courseId, true);
             } else {
                 this.notes = await AddonNotes.getNotesUserData(notesList);
+            }
+
+            if (this.logAfterFetch) {
+                this.logAfterFetch = false;
+                CoreUtils.ignoreErrors(AddonNotes.logView(this.courseId, this.userId));
             }
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
@@ -172,9 +176,9 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
         this.notesLoaded = false;
         this.refreshIcon = CoreConstants.ICON_LOADING;
         this.syncIcon = CoreConstants.ICON_LOADING;
+        this.logAfterFetch = true;
 
         await this.fetchNotes(true);
-        CoreUtils.ignoreErrors(AddonNotes.logView(this.courseId, this.userId));
     }
 
     /**
@@ -228,7 +232,7 @@ export class AddonNotesListPage implements OnInit, OnDestroy {
 
                 this.refreshNotes(false);
 
-                CoreDomUtils.showToast('addon.notes.eventnotedeleted', true, 3000);
+                CoreDomUtils.showToast('addon.notes.eventnotedeleted', true, ToastDuration.LONG);
 
             } catch (error) {
                 CoreDomUtils.showErrorModalDefault(error, 'Delete note failed.');

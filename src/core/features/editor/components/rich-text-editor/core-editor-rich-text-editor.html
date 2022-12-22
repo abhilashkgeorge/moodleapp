@@ -80,8 +80,7 @@
         </ion-slide>
         <ion-slide>
             <button [disabled]="!rteEnabled" [attr.aria-pressed]="toolbarStyles.ul" [title]="'core.editor.unorderedlist' | translate"
-                (click)="buttonAction($event, 'insertUnorderedList')" (click)="buttonAction($event, 'insertUnorderedList')"
-                (mousedown)="downAction($event)" (keydown)="downAction($event)">
+                (click)="buttonAction($event, 'insertUnorderedList')" (mousedown)="downAction($event)" (keydown)="downAction($event)">
                 <ion-icon name="fas-list-ul" aria-hidden="true"></ion-icon>
             </button>
         </ion-slide>
@@ -111,7 +110,7 @@
             </button>
         </ion-slide>
         <ion-slide *ngIf="isPhone">
-            <button [title]="'core.editor.hidetoolbar' | translate" (click)="hideToolbar($event)" (keyup)="hideToolbar($event)"
+            <button [title]="'core.editor.hidetoolbar' | translate" (click)="hideToolbar($event, true)" (keyup)="hideToolbar($event, true)"
                 (mousedown)="downAction($event)" (keydown)="downAction($event)">
                 <ion-icon name="fas-times" aria-hidden="true"></ion-icon>
             </button>

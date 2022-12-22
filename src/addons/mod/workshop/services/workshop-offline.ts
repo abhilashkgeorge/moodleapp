@@ -20,6 +20,7 @@ import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { makeSingleton } from '@singletons';
 import { CoreFormFields } from '@singletons/form';
+import { CoreText } from '@singletons/text';
 import {
     AddonModWorkshopAssessmentDBRecord,
     AddonModWorkshopEvaluateAssessmentDBRecord,
@@ -140,7 +141,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopSubmissionDBRecord>(SUBMISSIONS_TABLE);
 
-        return records.map(this.parseSubmissionRecord.bind(this));
+        return records.map((record) => this.parseSubmissionRecord(record));
     }
 
     /**
@@ -159,7 +160,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopSubmissionDBRecord>(SUBMISSIONS_TABLE, conditions);
 
-        return records.map(this.parseSubmissionRecord.bind(this));
+        return records.map((record) => this.parseSubmissionRecord(record));
     }
 
     /**
@@ -272,7 +273,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopAssessmentDBRecord>(ASSESSMENTS_TABLE);
 
-        return records.map(this.parseAssessmentRecord.bind(this));
+        return records.map((record) => this.parseAssessmentRecord(record));
     }
 
     /**
@@ -291,7 +292,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopAssessmentDBRecord>(ASSESSMENTS_TABLE, conditions);
 
-        return records.map(this.parseAssessmentRecord.bind(this));
+        return records.map((record) => this.parseAssessmentRecord(record));
     }
 
     /**
@@ -387,7 +388,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopEvaluateSubmissionDBRecord>(EVALUATE_SUBMISSIONS_TABLE);
 
-        return records.map(this.parseEvaluateSubmissionRecord.bind(this));
+        return records.map((record) => this.parseEvaluateSubmissionRecord(record));
     }
 
     /**
@@ -407,7 +408,7 @@ export class AddonModWorkshopOfflineProvider {
         const records =
             await site.getDb().getRecords<AddonModWorkshopEvaluateSubmissionDBRecord>(EVALUATE_SUBMISSIONS_TABLE, conditions);
 
-        return records.map(this.parseEvaluateSubmissionRecord.bind(this));
+        return records.map((record) => this.parseEvaluateSubmissionRecord(record));
     }
 
     /**
@@ -517,7 +518,7 @@ export class AddonModWorkshopOfflineProvider {
 
         const records = await site.getDb().getRecords<AddonModWorkshopEvaluateAssessmentDBRecord>(EVALUATE_ASSESSMENTS_TABLE);
 
-        return records.map(this.parseEvaluateAssessmentRecord.bind(this));
+        return records.map((record) => this.parseEvaluateAssessmentRecord(record));
     }
 
     /**
@@ -537,7 +538,7 @@ export class AddonModWorkshopOfflineProvider {
         const records =
             await site.getDb().getRecords<AddonModWorkshopEvaluateAssessmentDBRecord>(EVALUATE_ASSESSMENTS_TABLE, conditions);
 
-        return records.map(this.parseEvaluateAssessmentRecord.bind(this));
+        return records.map((record) => this.parseEvaluateAssessmentRecord(record));
     }
 
     /**
@@ -629,7 +630,7 @@ export class AddonModWorkshopOfflineProvider {
         const siteFolderPath = CoreFile.getSiteFolder(site.getId());
         const workshopFolderPath = 'offlineworkshop/' + workshopId + '/';
 
-        return CoreTextUtils.concatenatePaths(siteFolderPath, workshopFolderPath);
+        return CoreText.concatenatePaths(siteFolderPath, workshopFolderPath);
     }
 
     /**
@@ -642,7 +643,7 @@ export class AddonModWorkshopOfflineProvider {
     async getSubmissionFolder(workshopId: number, siteId?: string): Promise<string> {
         const folderPath = await this.getWorkshopFolder(workshopId, siteId);
 
-        return CoreTextUtils.concatenatePaths(folderPath, 'submission');
+        return CoreText.concatenatePaths(folderPath, 'submission');
     }
 
     /**
@@ -658,7 +659,7 @@ export class AddonModWorkshopOfflineProvider {
 
         folderPath += 'assessment/';
 
-        return CoreTextUtils.concatenatePaths(folderPath, String(assessmentId));
+        return CoreText.concatenatePaths(folderPath, String(assessmentId));
     }
 
 }

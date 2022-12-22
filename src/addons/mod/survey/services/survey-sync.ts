@@ -17,7 +17,7 @@ import { CoreNetworkError } from '@classes/errors/network-error';
 import { CoreCourseActivitySyncBaseProvider } from '@features/course/classes/activity-sync';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreSites } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { makeSingleton } from '@singletons';
@@ -60,7 +60,7 @@ export class AddonModSurveySyncProvider extends CoreCourseActivitySyncBaseProvid
      * @return Promise resolved if sync is successful, rejected if sync fails.
      */
     syncAllSurveys(siteId?: string, force?: boolean): Promise<void> {
-        return this.syncOnSites('all surveys', this.syncAllSurveysFunc.bind(this, !!force), siteId);
+        return this.syncOnSites('all surveys', (siteId) => this.syncAllSurveysFunc(!!force, siteId), siteId);
     }
 
     /**
@@ -168,7 +168,7 @@ export class AddonModSurveySyncProvider extends CoreCourseActivitySyncBaseProvid
         }
 
         if (answersNumber > 0 && data) {
-            if (!CoreApp.isOnline()) {
+            if (!CoreNetwork.isOnline()) {
                 // Cannot sync in offline.
                 throw new CoreNetworkError();
             }

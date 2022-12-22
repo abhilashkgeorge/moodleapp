@@ -59,19 +59,13 @@ export class CoreCourseFormatSingleActivityHandlerService implements CoreCourseF
             return sections[0].modules[0].name;
         }
 
-        if (course.displayname) {
-            return course.displayname;
-        } else if (course.fullname) {
-            return course.fullname;
-        }
-
-        return '';
+        return course.fullname || '';
     }
 
     /**
      * @inheritdoc
      */
-    displaySectionSelector(): boolean {
+    displayCourseIndex(): boolean {
         return false;
     }
 

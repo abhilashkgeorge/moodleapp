@@ -66,9 +66,9 @@ export class AddonModFeedbackAttemptPage implements OnInit, OnDestroy {
     /**
      * @inheritdoc
      */
-    ngOnInit(): void {
+    async ngOnInit(): Promise<void> {
         try {
-            this.attempts.start();
+            await this.attempts.start();
         } catch (error) {
             CoreDomUtils.showErrorModal(error);
 
@@ -130,7 +130,6 @@ export class AddonModFeedbackAttemptPage implements OnInit, OnDestroy {
 
                 return attemptItem;
             }).filter((itemData) => itemData); // Filter items with errors.
-
         } catch (message) {
             // Some call failed on fetch, go back.
             CoreDomUtils.showErrorModalDefault(message, 'core.course.errorgetmodule', true);

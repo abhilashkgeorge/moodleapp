@@ -14,7 +14,7 @@
 
 import { Component, OnInit, OnDestroy, ViewChild } from '@angular/core';
 import { IonRefresher } from '@ionic/angular';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
@@ -23,16 +23,17 @@ import { AddonCalendar, AddonCalendarProvider } from '../../services/calendar';
 import { AddonCalendarOffline } from '../../services/calendar-offline';
 import { AddonCalendarSync, AddonCalendarSyncProvider } from '../../services/calendar-sync';
 import { AddonCalendarFilter, AddonCalendarHelper } from '../../services/calendar-helper';
-import { Network, NgZone } from '@singletons';
+import { NgZone } from '@singletons';
 import { Subscription } from 'rxjs';
 import { CoreEnrolledCourseData } from '@features/courses/services/courses';
 import { ActivatedRoute, Params } from '@angular/router';
 import { AddonCalendarCalendarComponent } from '../../components/calendar/calendar';
 import { AddonCalendarUpcomingEventsComponent } from '../../components/upcoming-events/upcoming-events';
-import { AddonCalendarFilterPopoverComponent } from '../../components/filter/filter';
+import { AddonCalendarFilterComponent } from '../../components/filter/filter';
 import { CoreNavigator } from '@services/navigator';
 import { CoreLocalNotifications } from '@services/local-notifications';
 import { CoreConstants } from '@/core/constants';
+import { CoreMainMenuDeepLinkManager } from '@features/mainmenu/classes/deep-link-manager';
 
 /**
  * Page that displays the calendar events.
@@ -152,10 +153,10 @@ export class AddonCalendarIndexPage implements OnInit, OnDestroy {
         );
 
         // Refresh online status when changes.
-        this.onlineObserver = Network.onChange().subscribe(() => {
+        this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
+                this.isOnline = CoreNetwork.isOnline();
             });
         });
     }
@@ -177,6 +178,9 @@ export class AddonCalendarIndexPage implements OnInit, OnDestroy {
 
             this.fetchData(true, false);
         });
+
+        const deepLinkManager = new CoreMainMenuDeepLinkManager();
+        deepLinkManager.treatLink();
     }
 
     /**
@@ -189,7 +193,7 @@ export class AddonCalendarIndexPage implements OnInit, OnDestroy {
     async fetchData(sync?: boolean, showErrors?: boolean): Promise<void> {
 
         this.syncIcon = CoreConstants.ICON_LOADING;
-        this.isOnline = CoreApp.isOnline();
+        this.isOnline = CoreNetwork.isOnline();
 
         if (sync) {
             // Try to synchronize offline events.
@@ -324,18 +328,15 @@ export class AddonCalendarIndexPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Show the context menu.
-     *
-     * @param event Event.
+     * Show the filter menu.
      */
-    async openFilter(event: MouseEvent): Promise<void> {
-        await CoreDomUtils.openPopover({
-            component: AddonCalendarFilterPopoverComponent,
+    async openFilter(): Promise<void> {
+        await CoreDomUtils.openSideModal({
+            component: AddonCalendarFilterComponent,
             componentProps: {
                 courses: this.courses,
                 filter: this.filter,
             },
-            event,
         });
     }
 
@@ -359,7 +360,7 @@ export class AddonCalendarIndexPage implements OnInit, OnDestroy {
      * Open calendar events settings.
      */
     openSettings(): void {
-        CoreNavigator.navigateToSitePath('/calendar/settings');
+        CoreNavigator.navigateToSitePath('/calendar/calendar-settings');
     }
 
     /**
