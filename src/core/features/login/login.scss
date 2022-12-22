@@ -3,17 +3,19 @@
 :host {
     ion-content,
     ion-list {
-        --background: var(--core-login-background);
-        --ion-item-background: var(--core-login-background);
-        --color: var(--core-login-text-color);
+        --background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(255, 196, 0, 0.7));
+       // --ion-item-background: rgb(212, 144, 25);
+        --color: rgb(0, 0, 0);
     }
-
     ion-item ion-label {
         --color: var(--core-login-text-color);
 
         p, h2, h3, .core-oauth-icon {
             color: var(--color);
         }
+    }
+    item-inner {
+        visibility: hidden;
     }
 
     form div {
@@ -27,6 +29,10 @@
         ion-label {
             color: var(--core-login-text-color);
         }
+    }
+    ion-button.core-login-login-button {
+        --color: rgb(255, 255, 255);
+        --background: #6a3d7e;
     }
 
     form .item.item-input,
@@ -53,16 +59,7 @@
     }
 
     .core-login-site-logo img {
-        max-width: 100%;
-    }
-
-    .core-sitename + .core-siteurl {
-        margin-top: 0;
-    }
-
-    .core-sitename {
-        font-size: 1.2rem;
-        margin-bottom: 0;
+        max-width: 150%;
     }
 
     .core-login-site-logo {
@@ -89,7 +86,7 @@
 
     @if ($core-login-button-outline) {
         form ion-button {
-            --background: white;
+            --background: rgb(0, 0, 0);
             --color: var(--core-login-background);
         }
     }

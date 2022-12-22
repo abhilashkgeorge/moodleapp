@@ -22,6 +22,11 @@ $green:       #357a32 !default;
 $red:         #ca3120 !default;
 $yellow:      #f0ad4e !default;
 
+$gold-logo: #d47a19;
+$gold-logo-light: #f9bd3d;
+$violet-logo: #6a3d7e;
+
+
 $brand-color: #ff7518 !default;
 
 $text-color:               $gray-900 !default;
@@ -96,6 +101,7 @@ $core-course-thumb-on-cards-background: null !default;
 $core-course-hide-progress-on-cards: false !default;
 
 // Configuration options for login page.
+
 $core-login-button-outline: false !default;
 $core-login-button-outline-dark: $core-login-button-outline !default;
 $core-login-loading-color: false !default;
