@@ -27,11 +27,7 @@
     <preference name="UIWebViewBounce" value="false" />
     <preference name="DisallowOverscroll" value="true" />
     <preference name="prerendered-icon" value="true" />
-<<<<<<< HEAD
     <preference name="AppendUserAgent" value="goscore 1.0 (1)" />
-=======
-    <preference name="AppendUserAgent" value="MoodleMobile 4.1.0-dev (41000)" />
->>>>>>> 8b36a6864d4bc9996aac7de9905aba78cda331bb
     <preference name="BackupWebStorage" value="none" />
     <preference name="ScrollEnabled" value="false" />
     <preference name="KeyboardDisplayRequiresUserAction" value="false" />
