@@ -109,6 +109,14 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
 
         await this.fetchData();
 
+        if (!this.access || this.access.isempty && (!this.access.canedititems && !this.access.canviewreports)) {
+            CoreDomUtils.showErrorModal(Translate.instant('core.nopermissiontoaccesspage'));
+
+            CoreNavigator.back();
+
+            return;
+        }
+
         if (!this.feedback) {
             return;
         }
@@ -154,7 +162,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
     /**
      * Fetch all the data required for the view.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchData(): Promise<void> {
         try {
@@ -195,7 +203,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch access information.
      *
      * @param options Options.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchAccessData(options: CoreCourseCommonModWSOptions): Promise<void> {
         try {
@@ -218,7 +226,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Get resume page from WS.
      *
      * @param options Options.
-     * @return Promise resolved with the page to resume.
+     * @returns Promise resolved with the page to resume.
      */
     protected async fetchResumePage(options: CoreCourseCommonModWSOptions): Promise<number> {
         try {
@@ -241,7 +249,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch page data.
      *
      * @param page Page to load.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchFeedbackPageData(page: number = 0): Promise<void> {
         this.items = [];
@@ -261,7 +269,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Fetch page items.
      *
      * @param page Page to get.
-     * @return Promise resolved with WS response.
+     * @returns Promise resolved with WS response.
      */
     protected async fetchPageItems(page: number): Promise<AddonModFeedbackPageItems> {
         const options = {
@@ -309,7 +317,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
      * Function to allow page navigation through the questions form.
      *
      * @param goPrevious If true it will go back to the previous page, if false, it will go forward.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async gotoPage(goPrevious: boolean): Promise<void> {
         this.content?.scrollToTop();
@@ -406,6 +414,8 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
 
     /**
      * Function to go to the page after submit.
+     *
+     * @returns Promise resolved when done.
      */
     async continue(): Promise<void> {
         if (!this.siteAfterSubmit) {
@@ -426,7 +436,7 @@ export class AddonModFeedbackFormPage implements OnInit, OnDestroy, CanLeave {
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.onlineObserver.unsubscribe();

@@ -64,6 +64,10 @@
       font-weight: normal;
     }
 
+    tbody tr.core-bold th {
+      font-weight: inherit;
+    }
+
     tbody #gradeitem {
         @include padding(null, null, null, 4px);
     }
@@ -122,6 +126,14 @@
         ion-icon {
             @include padding(null, 4px, null, null);
         }
+    }
+
+    .core-grades-table-leader {
+        width: 0;
+    }
+
+    .ion-no-border {
+        border: 0 !important;
     }
 
     .dimmed_text,

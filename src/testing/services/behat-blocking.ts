@@ -53,6 +53,8 @@ export class TestingBehatBlockingService {
 
     /**
      * Get pending list on window M object.
+     *
+     * @returns List of pending JS blockers.
      */
     protected get pendingList(): string[] {
         const win = window as BehatTestsWindow;
@@ -77,7 +79,7 @@ export class TestingBehatBlockingService {
      * Adds a pending key to the array.
      *
      * @param key Key to add. It will be generated if none.
-     * @return Key name.
+     * @returns Key name.
      */
     block(key = ''): string {
         // Add a special DELAY entry whenever another entry is added.
@@ -192,9 +194,25 @@ export class TestingBehatBlockingService {
      */
     protected async checkUIBlocked(): Promise<void> {
         await CoreUtils.nextTick();
-        const blocked = document.querySelector<HTMLElement>('div.core-loading-container, ion-loading, .click-block-active');
 
-        if (blocked?.offsetParent) {
+        const blockingElements = Array.from(
+            document.querySelectorAll<HTMLElement>('div.core-loading-container, ion-loading, .click-block-active'),
+        );
+
+        const isBlocked = blockingElements.some(element => {
+            if (!element.offsetParent) {
+                return false;
+            }
+
+            const slide = element.closest('ion-slide');
+            if (slide && !slide.classList.contains('swiper-slide-active')) {
+                return false;
+            }
+
+            return true;
+        });
+
+        if (isBlocked) {
             if (!this.waitingBlocked) {
                 this.block('blocked');
                 this.waitingBlocked = true;

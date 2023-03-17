@@ -44,6 +44,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
     groupInfo?: CoreGroupInfo;
     allPartsPermissions?: AddonModForumCanAddDiscussion;
     canAddDiscussionToGroup = true;
+    errorLoadingDiscussions = false;
 
     constructor(courseId: number, cmId: number, discussionsPathPrefix: string) {
         super();
@@ -57,7 +58,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
      * Type guard to infer NewDiscussionForm objects.
      *
      * @param discussion Item to check.
-     * @return Whether the item is a new discussion form.
+     * @returns Whether the item is a new discussion form.
      */
     isNewDiscussionForm(discussion: AddonModForumDiscussionItem): discussion is AddonModForumNewDiscussionForm {
         return 'newDiscussion' in discussion;
@@ -67,7 +68,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
      * Type guard to infer AddonModForumDiscussion objects.
      *
      * @param discussion Item to check.
-     * @return Whether the item is an online discussion.
+     * @returns Whether the item is an online discussion.
      */
     isOfflineDiscussion(discussion: AddonModForumDiscussionItem): discussion is AddonModForumOfflineDiscussion {
         return !this.isNewDiscussionForm(discussion) && !this.isOnlineDiscussion(discussion);
@@ -77,7 +78,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
      * Type guard to infer AddonModForumDiscussion objects.
      *
      * @param discussion Item to check.
-     * @return Whether the item is an online discussion.
+     * @returns Whether the item is an online discussion.
      */
     isOnlineDiscussion(discussion: AddonModForumDiscussionItem): discussion is AddonModForumDiscussion {
         return 'id' in discussion;
@@ -168,7 +169,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
     /**
      * Load some specific data for current group.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async loadSelectedGroupData(): Promise<void> {
         if (!this.usesGroups) {
@@ -222,13 +223,27 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
             throw new Error('Can\'t load discussions without a forum or selected sort order');
         }
 
-        const response = await AddonModForum.getDiscussions(this.forum.id, {
-            cmId: this.forum.cmid,
-            sortOrder: this.selectedSortOrder.value,
-            page,
-            groupId: this.groupId,
-        });
-        let discussions = response.discussions;
+        let discussions: AddonModForumDiscussion[] = [];
+        let canLoadMore = false;
+        try {
+            const response = await AddonModForum.getDiscussions(this.forum.id, {
+                cmId: this.forum.cmid,
+                sortOrder: this.selectedSortOrder.value,
+                page,
+                groupId: this.groupId,
+            });
+
+            discussions = response.discussions;
+            canLoadMore = response.canLoadMore;
+            this.errorLoadingDiscussions = false;
+        } catch (error) {
+            if (page > 0 || CoreUtils.isWebServiceError(error)) {
+                throw error;
+            }
+
+            // Error loading first discussions, use an empty list.
+            this.errorLoadingDiscussions = true;
+        }
 
         if (this.usesGroups) {
             discussions = await AddonModForum.formatDiscussionsGroups(this.forum.cmid, discussions);
@@ -254,7 +269,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
             }
         }
 
-        return { discussions, canLoadMore: response.canLoadMore };
+        return { discussions, canLoadMore };
     }
 
     /**
@@ -308,7 +323,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
     /**
      * Invalidate cache data.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async invalidateCache(): Promise<void> {
         const promises: Promise<void>[] = [];
@@ -327,7 +342,7 @@ export class AddonModForumDiscussionsSource extends CoreRoutedItemsManagerSource
     /**
      * Invalidate list cache data.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async invalidateList(): Promise<void> {
         if (this.forum) {

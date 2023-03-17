@@ -79,6 +79,7 @@ import { Md5 } from 'ts-md5/dist/md5';
 import { CoreSyncBaseProvider } from '@classes/base-sync';
 import { CoreArray } from '@singletons/array';
 import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreDom } from '@singletons/dom';
 import { CoreForms } from '@singletons/form';
 import { CoreText } from '@singletons/text';
@@ -193,7 +194,7 @@ export class CoreCompileProvider {
      * @param template The template of the component.
      * @param componentClass The JS class of the component.
      * @param extraImports Extra imported modules if needed and not imported by this class.
-     * @return Promise resolved with the factory to instantiate the component.
+     * @returns Promise resolved with the factory to instantiate the component.
      */
     async createAndCompileComponent<T = unknown>(
         template: string,
@@ -230,7 +231,7 @@ export class CoreCompileProvider {
      * Eval some javascript using the context of the function.
      *
      * @param javascript The javascript to eval.
-     * @return Result of the eval.
+     * @returns Result of the eval.
      */
     protected evalInContext(javascript: string): unknown {
         // eslint-disable-next-line no-eval
@@ -242,7 +243,7 @@ export class CoreCompileProvider {
      *
      * @param instance Instance to use as the context. In the JS code, "this" will be this instance.
      * @param javascript The javascript code to eval.
-     * @return Result of the javascript execution.
+     * @returns Result of the javascript execution.
      */
     executeJavascript(instance: unknown, javascript: string): unknown {
         try {
@@ -350,6 +351,7 @@ export class CoreCompileProvider {
         instance['CoreSyncBaseProvider'] = CoreSyncBaseProvider;
         instance['CoreArray'] = CoreArray;
         instance['CoreComponentsRegistry'] = CoreComponentsRegistry;
+        instance['CoreDirectivesRegistry'] = CoreDirectivesRegistry;
         instance['CoreNetwork'] = CoreNetwork.instance;
         instance['CorePlatform'] = CorePlatform.instance;
         instance['CoreDom'] = CoreDom;
@@ -390,7 +392,7 @@ export class CoreCompileProvider {
      * @param template The template of the component.
      * @param componentClass The JS class of the component.
      * @param injector The injector to use. It's recommended to pass it so NavController and similar can be injected.
-     * @return Promise resolved with the component instance.
+     * @returns Promise resolved with the component instance.
      */
     async instantiateDynamicComponent<T = unknown>(
         template: string,

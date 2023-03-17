@@ -19,7 +19,6 @@ import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
-import { CoreApp } from '@services/app';
 import { CoreNetwork } from '@services/network';
 import { CoreFileHelper } from '@services/file-helper';
 import { CoreSites } from '@services/sites';
@@ -35,6 +34,7 @@ import {
     AddonModResourceProvider,
 } from '../../services/resource';
 import { AddonModResourceHelper } from '../../services/resource-helper';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Component that displays a resource.
@@ -79,7 +79,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.isIOS = CoreApp.isIOS();
+        this.isIOS = CorePlatform.isIOS();
         this.isOnline = CoreNetwork.isOnline();
 
         // Refresh online status when changes.
@@ -195,7 +195,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
      * Opens a file.
      *
      * @param iOSOpenFileAction Action to do in iOS.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async open(iOSOpenFileAction?: OpenFileAction): Promise<void> {
         let downloadable = await CoreCourseModulePrefetchDelegate.isModuleDownloadable(this.module, this.courseId);

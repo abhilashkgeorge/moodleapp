@@ -28,7 +28,7 @@ import { CONTENTS_PAGE_NAME } from '@features/course/course.module';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreCoursesHelper, CoreCourseWithImageAndColor } from '@features/courses/services/courses-helper';
 import { CoreColors } from '@singletons/colors';
-import { CoreText } from '@singletons/text';
+import { CorePath } from '@singletons/path';
 
 /**
  * Page that displays the list of courses the user is enrolled in.
@@ -49,8 +49,10 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
     tabs: CourseTab[] = [];
     loaded = false;
     progress?: number;
+    fullScreenEnabled = false;
 
     protected currentPagePath = '';
+    protected fullScreenObserver: CoreEventObserver;
     protected selectTabObserver: CoreEventObserver;
     protected completionObserver: CoreEventObserver;
     protected sections: CoreCourseWSSection[] = []; // List of course sections.
@@ -114,6 +116,10 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
 
             this.updateProgress();
         });
+
+        this.fullScreenObserver = CoreEvents.on(CoreEvents.FULL_SCREEN_CHANGED, (event: { enabled: boolean }) => {
+            this.fullScreenEnabled = event.enabled;
+        });
     }
 
     /**
@@ -149,7 +155,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
         }
 
         this.currentPagePath = CoreNavigator.getCurrentPath();
-        this.contentsTab.page = CoreText.concatenatePaths(this.currentPagePath, this.contentsTab.page);
+        this.contentsTab.page = CorePath.concatenatePaths(this.currentPagePath, this.contentsTab.page);
         this.contentsTab.pageParams = {
             course: this.course,
             sectionId: CoreNavigator.getRouteNumberParam('sectionId'),
@@ -193,7 +199,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
     /**
      * Load course option handlers.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadCourseHandlers(): Promise<void> {
         if (!this.course) {
@@ -207,7 +213,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
 
         // Create the full path.
         handlers.forEach((handler, index) => {
-            handler.data.page = CoreText.concatenatePaths(this.currentPagePath, handler.data.page);
+            handler.data.page = CorePath.concatenatePaths(this.currentPagePath, handler.data.page);
             handler.data.pageParams = handler.data.pageParams || {};
 
             // Check if this handler should be the first selected tab.
@@ -233,7 +239,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
     /**
      * Load title for the page.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadBasinInfo(): Promise<void> {
         if (!this.course) {
@@ -267,6 +273,7 @@ export class CoreCourseIndexPage implements OnInit, OnDestroy {
         CoreNavigator.decreaseRouteDepth(path.replace(/(\/deep)+/, ''));
         this.selectTabObserver?.off();
         this.completionObserver?.off();
+        this.fullScreenObserver?.off();
     }
 
     /**

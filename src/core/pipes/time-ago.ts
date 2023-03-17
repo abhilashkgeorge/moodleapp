@@ -35,10 +35,10 @@ export class CoreTimeAgoPipe implements PipeTransform {
      * Turn a UNIX timestamp to "time ago".
      *
      * @param timestamp The UNIX timestamp (without milliseconds).
-     * @return Formatted time.
+     * @returns Formatted time.
      */
     transform(timestamp: string | number): string {
-        if (typeof timestamp == 'string') {
+        if (typeof timestamp === 'string') {
             // Convert the value to a number.
             const numberTimestamp = parseInt(timestamp, 10);
             if (isNaN(numberTimestamp)) {

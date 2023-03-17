@@ -11,6 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 import { AddonModDataEntryField, AddonModDataProvider } from '@addons/mod/data/services/data';
 import { Component } from '@angular/core';
 import { CoreFileEntry, CoreFileHelper } from '@services/file-helper';
@@ -43,7 +44,7 @@ export class AddonModDataFieldPictureComponent extends AddonModDataFieldPluginBa
      * Get the files from the input value.
      *
      * @param value Input value.
-     * @return List of files.
+     * @returns List of files.
      */
     protected getFiles(value?: Partial<AddonModDataEntryField>): CoreFileEntry[] {
         let files = value?.files || [];
@@ -61,7 +62,7 @@ export class AddonModDataFieldPictureComponent extends AddonModDataFieldPluginBa
      *
      * @param files File list where to search.
      * @param filenameSeek Filename to search.
-     * @return File found or false.
+     * @returns File found or false.
      */
     protected findFile(
         files: CoreFileEntry[],

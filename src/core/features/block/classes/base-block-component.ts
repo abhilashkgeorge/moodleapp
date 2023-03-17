@@ -21,7 +21,7 @@ import { CoreCourseBlock } from '../../course/services/course';
 import { Params } from '@angular/router';
 import { ContextLevel } from '@/core/constants';
 import { CoreNavigationOptions } from '@services/navigator';
-import { AsyncComponent } from '@classes/async-component';
+import { AsyncDirective } from '@classes/async-directive';
 import { CorePromisedValue } from '@classes/promised-value';
 
 /**
@@ -30,7 +30,7 @@ import { CorePromisedValue } from '@classes/promised-value';
 @Component({
     template: '',
 })
-export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockComponent, AsyncComponent {
+export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockComponent, AsyncDirective {
 
     @Input() title!: string; // The block title.
     @Input() block!: CoreCourseBlock; // The block to render.
@@ -51,7 +51,7 @@ export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockCompon
     }
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         if (this.block.configs && this.block.configs.length > 0) {
@@ -69,7 +69,7 @@ export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockCompon
      * Perform the refresh content function.
      *
      * @param showLoading Whether to show loading.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async refreshContent(showLoading?: boolean): Promise<void> {
         if (showLoading) {
@@ -116,7 +116,7 @@ export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockCompon
     /**
      * Download the component contents.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchContent(): Promise<void> {
         return;
@@ -125,7 +125,7 @@ export abstract class CoreBlockBaseComponent implements OnInit, ICoreBlockCompon
     /**
      * Reload content without invalidating data.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async reloadContent(): Promise<void> {
         if (!this.loaded) {

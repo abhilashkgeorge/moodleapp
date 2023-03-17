@@ -11,13 +11,15 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+
 import { Component, OnInit } from '@angular/core';
 import { CoreLoginHelper, CoreLoginMethod } from '@features/login/services/login-helper';
+import { CoreSites } from '@services/sites';
 
 @Component({
     selector: 'core-login-methods',
     templateUrl: 'login-methods.html',
-    styleUrls: ['../../login.scss', 'login-methods.scss'],
+    styleUrls: ['../../login.scss'],
 })
 export class CoreLoginMethodsComponent implements OnInit {
 
@@ -28,6 +30,12 @@ export class CoreLoginMethodsComponent implements OnInit {
      */
     async ngOnInit(): Promise<void> {
         this.loginMethods = await CoreLoginHelper.getLoginMethods();
+        const currentSite = CoreSites.getCurrentSite();
+        const defaultMethod = await CoreLoginHelper.getDefaultLoginMethod();
+
+        if (currentSite?.isLoggedOut() && defaultMethod) {
+            await defaultMethod.action();
+        }
     }
 
 }

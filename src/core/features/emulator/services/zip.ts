@@ -15,7 +15,7 @@
 import { Injectable } from '@angular/core';
 import { Zip } from '@ionic-native/zip/ngx';
 import * as JSZip from 'jszip';
-import { CoreText } from '@singletons/text';
+import { CorePath } from '@singletons/path';
 import { File } from '@singletons';
 
 /**
@@ -29,7 +29,7 @@ export class ZipMock extends Zip {
      *
      * @param destination Destination parent folder.
      * @param dirPath Relative path to the folder.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async createDir(destination: string, dirPath: string): Promise<void> {
         // Create all the folders 1 by 1 in order, otherwise it fails.
@@ -41,7 +41,7 @@ export class ZipMock extends Zip {
             await File.createDir(destination, folder, true);
 
             // Folder created, add it to the destination path.
-            destination = CoreText.concatenatePaths(destination, folder);
+            destination = CorePath.concatenatePaths(destination, folder);
         }
     }
 
@@ -51,7 +51,7 @@ export class ZipMock extends Zip {
      * @param source Path to the source ZIP file.
      * @param destination Destination folder.
      * @param onProgress Optional callback to be called on progress update
-     * @return Promise that resolves with a number. 0 is success, -1 is error.
+     * @returns Promise that resolves with a number. 0 is success, -1 is error.
      */
     async unzip(source: string, destination: string, onProgress?: (ev: {loaded: number; total: number}) => void): Promise<number> {
 
@@ -101,7 +101,7 @@ export class ZipMock extends Zip {
                     const fileData = await file.async('blob');
 
                     // File read and parent folder created, now write the file.
-                    const parentFolder = CoreText.concatenatePaths(destination, fileDir);
+                    const parentFolder = CorePath.concatenatePaths(destination, fileDir);
 
                     await File.writeFile(parentFolder, fileName, fileData, { replace: true });
                 } else {

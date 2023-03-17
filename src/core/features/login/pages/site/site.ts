@@ -27,7 +27,6 @@ import {
     CoreLoginSiteFinderSettings,
     CoreLoginSiteSelectorListMethod,
 } from '@features/login/services/login-helper';
-import { CoreSite } from '@classes/site';
 import { CoreError } from '@classes/errors/error';
 import { CoreConstants } from '@/core/constants';
 import { Translate } from '@singletons';
@@ -40,6 +39,13 @@ import { CoreCustomURLSchemes, CoreCustomURLSchemesHandleError } from '@services
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreForms } from '@singletons/form';
 import { AlertButton } from '@ionic/core';
+import { CoreSiteError } from '@classes/errors/siteerror';
+import { CoreUserSupport } from '@features/user/services/support';
+import { CoreErrorInfoComponent } from '@components/error-info/error-info';
+import { CoreUserSupportConfig } from '@features/user/classes/support/support-config';
+import { CoreUserGuestSupportConfig } from '@features/user/classes/support/guest-support-config';
+import { CoreLoginError } from '@classes/errors/loginerror';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Site (url) chooser when adding a new site.
@@ -88,7 +94,7 @@ export class CoreLoginSitePage implements OnInit {
         // Load fixed sites if they're set.
         if (CoreLoginHelper.hasSeveralFixedSites()) {
             url = this.initSiteSelector();
-        } else if (CoreConstants.CONFIG.enableonboarding && !CoreApp.isIOS()) {
+        } else if (CoreConstants.CONFIG.enableonboarding && !CorePlatform.isIOS()) {
             this.initOnboarding();
         }
 
@@ -128,7 +134,7 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Initialize the site selector.
      *
-     * @return URL of the first site.
+     * @returns URL of the first site.
      */
     protected initSiteSelector(): string {
         this.fixedSites = this.extendCoreLoginSiteInfo(<CoreLoginSiteInfoExtended[]> CoreLoginHelper.getFixedSites());
@@ -147,7 +153,7 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Initialize and show onboarding if needed.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async initOnboarding(): Promise<void> {
         const onboardingDone = await CoreConfig.get(CoreLoginHelperProvider.ONBOARDING_DONE, false);
@@ -162,7 +168,7 @@ export class CoreLoginSitePage implements OnInit {
      * Extend info of Login Site Info to get UI tweaks.
      *
      * @param sites Sites list.
-     * @return Sites list with extended info.
+     * @returns Sites list with extended info.
      */
     protected extendCoreLoginSiteInfo(sites: CoreLoginSiteInfoExtended[]): CoreLoginSiteInfoExtended[] {
         return sites.map((site) => {
@@ -193,7 +199,7 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Validate Url.
      *
-     * @return {ValidatorFn} Validation results.
+     * @returns {ValidatorFn} Validation results.
      */
     protected moodleUrlValidator(): ValidatorFn {
         return (control: AbstractControl): ValidationErrors | null => {
@@ -238,7 +244,7 @@ export class CoreLoginSitePage implements OnInit {
      * @param e Event.
      * @param url The URL to connect to.
      * @param foundSite The site clicked, if any, from the found sites list.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async connect(e: Event, url: string, foundSite?: CoreLoginSiteInfoExtended): Promise<void> {
         e.preventDefault();
@@ -310,7 +316,7 @@ export class CoreLoginSitePage implements OnInit {
      * Authenticate in a demo site.
      *
      * @param siteData Site data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loginDemoSite(siteData: CoreSitesDemoSiteData): Promise<void> {
         const modal = await CoreDomUtils.showModalLoading();
@@ -342,7 +348,7 @@ export class CoreLoginSitePage implements OnInit {
      * @param response Response obtained from the site check request.
      * @param foundSite The site clicked, if any, from the found sites list.
      *
-     * @return Promise resolved after logging in.
+     * @returns Promise resolved after logging in.
      */
     protected async login(response: CoreSiteCheckResponse, foundSite?: CoreLoginSiteInfoExtended): Promise<void> {
         try {
@@ -380,43 +386,72 @@ export class CoreLoginSitePage implements OnInit {
      * @param url The URL the user was trying to connect to.
      * @param error Error to display.
      */
-    protected showLoginIssue(url: string | null, error: CoreError): void {
+    protected async showLoginIssue(url: string | null, error: CoreError): Promise<void> {
         let errorMessage = CoreDomUtils.getErrorMessage(error);
+        let siteExists = false;
+        let supportConfig: CoreUserSupportConfig | undefined = undefined;
+        let errorTitle: string | undefined;
+        let errorDetails: string | undefined;
+        let errorCode: string | undefined;
 
-        if (errorMessage == Translate.instant('core.cannotconnecttrouble')) {
-            const found = this.sites.find((site) => site.url == url);
-
-            if (!found) {
-                errorMessage += ' ' + Translate.instant('core.cannotconnectverify');
-            }
+        if (error instanceof CoreSiteError) {
+            supportConfig = error.supportConfig;
+            errorDetails = error.errorDetails;
+            errorCode = error.errorcode;
+            siteExists = supportConfig instanceof CoreUserGuestSupportConfig;
         }
 
-        let message = '<p>' + errorMessage + '</p>';
-        if (url) {
-            const fullUrl = CoreUrlUtils.isAbsoluteURL(url) ? url : 'https://' + url;
-            message += '<p padding><a href="' + fullUrl + '" core-link>' + url + '</a></p>';
+        if (error instanceof CoreLoginError) {
+            errorTitle = error.title;
         }
 
-        const buttons: AlertButton[] = [
-            {
-                text: Translate.instant('core.needhelp'),
-                cssClass: 'core-login-need-help',
-                handler: (): void => {
-                    this.showHelp();
-                },
-            },
+        if (errorDetails) {
+            errorMessage = `<p>${errorMessage}</p><div class="core-error-info-container"></div>`;
+        }
+
+        const alertSupportConfig = supportConfig;
+        const buttons = [
             {
                 text: Translate.instant('core.tryagain'),
                 role: 'cancel',
             },
-        ];
+            alertSupportConfig?.canContactSupport()
+                ? {
+                    text: Translate.instant('core.contactsupport'),
+                    handler: () => CoreUserSupport.contact({
+                        supportConfig: alertSupportConfig,
+                        subject: Translate.instant('core.cannotconnect'),
+                        message: `Error: ${errorCode}\n\n${errorDetails}`,
+                    }),
+                }
+                : (
+                    !siteExists
+                        ? {
+                            text: Translate.instant('core.needhelp'),
+                            cssClass: 'core-login-need-help',
+                            handler: () => this.showHelp(),
+                        }
+                        : null
+                ),
+        ].filter(button => !!button);
 
-        // @TODO: Remove CoreSite.MINIMUM_MOODLE_VERSION, not used on translations since 3.9.0.
-        CoreDomUtils.showAlertWithOptions({
-            header: Translate.instant('core.cannotconnect', { $a: CoreSite.MINIMUM_MOODLE_VERSION }),
-            message,
-            buttons,
+        const alertElement = await CoreDomUtils.showAlertWithOptions({
+            header: errorTitle ?? (
+                siteExists
+                    ? Translate.instant('core.cannotconnect')
+                    : Translate.instant('core.sitenotfound')
+            ),
+            message: errorMessage ?? Translate.instant('core.sitenotfoundhelp'),
+            buttons: buttons as AlertButton[],
         });
+
+        if (errorDetails) {
+            const containerElement = alertElement.querySelector('.core-error-info-container');
+
+            if (containerElement) {
+                containerElement.innerHTML = CoreErrorInfoComponent.render(errorDetails, errorCode);
+            }
+        }
     }
 
     /**
@@ -465,7 +500,7 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Show instructions and scan QR code.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async showInstructionsAndScanQR(): Promise<void> {
         try {
@@ -480,7 +515,7 @@ export class CoreLoginSitePage implements OnInit {
     /**
      * Scan a QR code and put its text in the URL input.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async scanQR(): Promise<void> {
         // Scan for a QR code.
@@ -531,7 +566,7 @@ export class CoreLoginSitePage implements OnInit {
      *
      * @param customURL Custom URL handled.
      * @param error Error data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async treatErrorInAuthenticationCustomURL(customURL: string, error: CoreCustomURLSchemesHandleError): Promise<void> {
         const siteUrl = error.data?.siteUrl || '';

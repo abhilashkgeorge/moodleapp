@@ -19,6 +19,7 @@
 require_once(__DIR__ . '/../../../../lib/behat/behat_base.php');
 require_once(__DIR__ . '/behat_app_helper.php');
 
+use Behat\Behat\Hook\Scope\ScenarioScope;
 use Behat\Gherkin\Node\TableNode;
 use Behat\Mink\Exception\DriverException;
 use Behat\Mink\Exception\ExpectationException;
@@ -44,6 +45,27 @@ class behat_app extends behat_app_helper {
     ];
 
     protected $windowsize = '360x720';
+
+    /**
+     * @BeforeScenario
+     */
+    public function before_scenario(ScenarioScope $scope) {
+        if (!$scope->getFeature()->hasTag('app')) {
+            return;
+        }
+
+        global $CFG;
+
+        $performanceLogs = $CFG->behat_profiles['default']['capabilities']['extra_capabilities']['goog:loggingPrefs']['performance'] ?? null;
+
+        if ($performanceLogs !== 'ALL') {
+            return;
+        }
+
+        // Enable DB Logging only for app tests with performance logs activated.
+        $this->getSession()->visit($this->get_app_url() . '/assets/env.json');
+        $this->execute_script("document.cookie = 'MoodleAppDBLoggingEnabled=true;path=/';");
+    }
 
     /**
      * Opens the Moodle App in the browser and optionally logs in.
@@ -215,13 +237,21 @@ class behat_app extends behat_app_helper {
     /**
      * Trigger swipe gesture.
      *
-     * @When /^I swipe to the (left|right) in the app$/
+     * @When /^I swipe to the (left|right) (in (".+") )?in the app$/
      * @param string $direction Swipe direction
+     * @param bool $hasLocator Whether a reference locator is used.
+     * @param string $locator Reference locator.
      */
-    public function i_swipe_in_the_app(string $direction) {
-        $method = 'swipe' . ucwords($direction);
+    public function i_swipe_in_the_app(string $direction, bool $hasLocator = false, string $locator = '') {
+        if ($hasLocator) {
+            $locator = $this->parse_element_locator($locator);
+        }
 
-        $this->zone_js("getAngularInstance('ion-content', 'CoreSwipeNavigationDirective').$method()");
+        $result = $this->zone_js("swipe('$direction'" . ($hasLocator ? ", $locator" : '') . ')');
+
+        if ($result !== 'OK') {
+            throw new DriverException('Error when swiping - ' . $result);
+        }
 
         $this->wait_for_pending_js();
 
@@ -420,30 +450,42 @@ class behat_app extends behat_app_helper {
     /**
      * Receives push notifications.
      *
-     * @When /^I receive a push notification in the app for:$/
+     * @When /^I click a push notification in the app for:$/
      * @param TableNode $data Table data
      */
-    public function i_receive_a_push_notification(TableNode $data) {
+    public function i_click_a_push_notification(TableNode $data) {
         global $DB, $CFG;
 
         $data = (object) $data->getColumnsHash()[0];
-        $module = $DB->get_record('course_modules', ['idnumber' => $data->module]);
-        $discussion = $DB->get_record('forum_discussions', ['name' => $data->discussion]);
+
+        if (isset($data->module, $data->discussion)) {
+            $module = $DB->get_record('course_modules', ['idnumber' => $data->module]);
+            $discussion = $DB->get_record('forum_discussions', ['name' => $data->discussion]);
+            $data->name = 'posts';
+            $data->component = 'mod_forum';
+        }
+
         $notification = json_encode([
             'site' => md5($CFG->behat_wwwroot . $data->username),
-            'courseid' => $discussion->course,
-            'moodlecomponent' => 'mod_forum',
-            'name' => 'posts',
+            'subject' => $data->subject ?? null,
+            'userfrom' => $data->userfrom ?? null,
+            'userto' => $data->username ?? null,
+            'message' => $data->message ?? '',
+            'title' => $data->title ?? '',
+            'image' => $data->image ?? null,
+            'courseid' => $discussion->course ?? null,
+            'moodlecomponent' => $data->component ?? null,
+            'name' => $data->name ?? null,
             'contexturl' => '',
             'notif' => 1,
-            'customdata' => [
-                'discussionid' => $discussion->id,
-                'cmid' => $module->id,
-                'instance' => $discussion->forum,
-            ],
+            'customdata' => isset($discussion->id, $module->id, $discussion->forum)
+                ? ['discussionid' => $discussion->id, 'cmid' => $module->id, 'instance' => $discussion->forum]
+                : null,
+            'additionalData' => isset($data->subject) || isset($data->userfrom)
+                ? ['foreground' => true, 'notId' => 23, 'notif' => 1] : null,
         ]);
 
-        $this->zone_js("pushNotifications.notificationClicked($notification)", true);
+        $this->evaluate_script("pushNotifications.notificationClicked($notification)", true);
         $this->wait_for_pending_js();
     }
 
@@ -609,6 +651,9 @@ class behat_app extends behat_app_helper {
         });
 
         $this->wait_for_pending_js();
+
+        // Wait for UI to settle after refreshing.
+        $this->getSession()->wait(300);
     }
 
     /**
@@ -956,6 +1001,66 @@ class behat_app extends behat_app_helper {
 
         $windowNames = $this->getSession()->getWindowNames();
         $this->getSession()->switchToWindow($windowNames[1]);
+    }
+
+
+    /**
+     * Check if a notification has been triggered and is present.
+     *
+     * @Then /^a notification with title (".+") is( not)? present in the app$/
+     * @param string $title Notification title
+     * @param bool $not Whether assert that the notification was not found
+     */
+    public function notification_present_in_the_app(string $title, bool $not = false) {
+        $result = $this->runtime_js("notificationIsPresentWithText($title)");
+
+        if ($not && $result === 'YES') {
+            throw new ExpectationException("Notification is present", $this->getSession()->getDriver());
+        }
+
+        if (!$not && $result === 'NO') {
+            throw new ExpectationException("Notification is not present", $this->getSession()->getDriver());
+        }
+
+        if ($result !== 'YES' && $result !== 'NO') {
+            throw new DriverException('Error checking notification - ' . $result);
+        }
+
+        return true;
+    }
+
+    /**
+     * Close a notification present in the app
+     *
+     * @Then /^I close a notification with title (".+") in the app$/
+     * @param string $title Notification title
+     */
+    public function close_notification_app(string $title) {
+        $result = $this->runtime_js("closeNotification($title)");
+
+        if ($result !== 'OK') {
+            throw new DriverException('Error closing notification - ' . $result);
+        }
+
+        return true;
+    }
+
+    /**
+     * View a specific month in the calendar in the app.
+     *
+     * @When /^I open the calendar for "(?P<month>\d+)" "(?P<year>\d+)" in the app$/
+     * @param int $month the month selected as a number
+     * @param int $year the four digit year
+     */
+    public function i_open_the_calendar_for($month, $year) {
+        $options = json_encode([
+            'params' => [
+                'month' => $month,
+                'year' => $year,
+            ],
+        ]);
+
+        $this->zone_js("navigator.navigateToSitePath('/calendar/index', $options)");
     }
 
 }

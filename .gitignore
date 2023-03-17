@@ -8,6 +8,7 @@
 *.tmp.*
 *.sublime-project
 *.sublime-workspace
+my-release-key.keystore
 .DS_Store
 Thumbs.db
 UserInterfaceState.xcuserstate

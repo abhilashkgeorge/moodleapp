@@ -26,6 +26,11 @@ import { CoreEvents } from '@singletons/events';
 import { CoreError } from '@classes/errors/error';
 import { CoreNavigator, CoreRedirectPayload } from '@services/navigator';
 import { CoreForms } from '@singletons/form';
+import { CoreUserSupport } from '@features/user/services/support';
+import { CoreUserSupportConfig } from '@features/user/classes/support/support-config';
+import { CoreUserAuthenticatedSupportConfig } from '@features/user/classes/support/authenticated-support-config';
+import { Translate } from '@singletons';
+import { SafeHtml } from '@angular/platform-browser';
 
 /**
  * Page to enter the user password to reconnect to a site.
@@ -55,6 +60,9 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     siteId!: string;
     showScanQR = false;
     showLoading = true;
+    reconnectAttempts = 0;
+    supportConfig?: CoreUserSupportConfig;
+    exceededAttemptsHTML?: SafeHtml | string | null;
 
     protected siteConfig?: CoreSitePublicConfigResponse;
     protected viewLeft = false;
@@ -74,7 +82,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Initialize the component.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         try {
@@ -101,6 +109,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             this.userAvatar = site.infos.userpictureurl;
             this.siteUrl = site.infos.siteurl;
             this.siteName = site.getSiteName();
+            this.supportConfig = new CoreUserAuthenticatedSupportConfig(site);
 
             // If login was OAuth we should only reach this page if the OAuth method ID has changed.
             this.isOAuth = site.isOAuth();
@@ -134,6 +143,17 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     }
 
     /**
+     * Show help modal.
+     */
+    showHelp(): void {
+        CoreUserSupport.showHelp(
+            Translate.instant('core.login.reconnecthelp'),
+            Translate.instant('core.login.reconnectsupportsubject'),
+            this.supportConfig,
+        );
+    }
+
+    /**
      * Get some data (like identity providers) from the site config.
      */
     protected async checkSiteConfig(site: CoreSite): Promise<void> {
@@ -149,6 +169,10 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
 
         this.identityProviders = CoreLoginHelper.getValidIdentityProviders(this.siteConfig, disabledFeatures);
         this.showForgottenPassword = !CoreLoginHelper.isForgottenPasswordDisabled(this.siteConfig);
+        this.exceededAttemptsHTML = CoreLoginHelper.buildExceededAttemptsHTML(
+            !!this.supportConfig?.canContactSupport(),
+            this.showForgottenPassword,
+        );
 
         if (!this.eventThrown && !this.viewLeft) {
             this.eventThrown = true;
@@ -243,10 +267,27 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
             } else if (error.errorcode == 'forcepasswordchangenotice') {
                 // Reset password field.
                 this.credForm.controls.password.reset();
+            } else if (error.errorcode == 'invalidlogin') {
+                this.reconnectAttempts++;
             }
         } finally {
             modal.dismiss();
         }
+    }
+
+    /**
+     * Exceeded attempts message clicked.
+     *
+     * @param event Click event.
+     */
+    exceededAttemptsClicked(event: Event): void {
+        event.preventDefault();
+
+        if (!(event.target instanceof HTMLAnchorElement)) {
+            return;
+        }
+
+        this.forgottenPassword();
     }
 
     /**
@@ -294,7 +335,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
     /**
      * Show instructions and scan QR code.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async showInstructionsAndScanQR(): Promise<void> {
         try {
@@ -312,7 +353,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
      * @param e Event.
      */
     keyDown(e: KeyboardEvent): void {
-        if (e.key == 'Escape') {
+        if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
         }
@@ -324,7 +365,7 @@ export class CoreLoginReconnectPage implements OnInit, OnDestroy {
      * @param e Event.
      */
     keyUp(e: KeyboardEvent): void {
-        if (e.key == 'Escape') {
+        if (e.key === 'Escape') {
             this.cancel(e);
         }
     }

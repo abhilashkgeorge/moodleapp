@@ -18,15 +18,18 @@ import { CoreCustomURLSchemes, CoreCustomURLSchemesProvider } from '@services/ur
 import { CoreLoginHelperProvider } from '@features/login/services/login-helper';
 import { CoreConfig } from '@services/config';
 import { EnvironmentConfig } from '@/types/config';
-import { makeSingleton, NgZone } from '@singletons';
+import { LocalNotifications, makeSingleton, NgZone } from '@singletons';
 import { CoreNetwork, CoreNetworkService } from '@services/network';
 import { CorePushNotifications, CorePushNotificationsProvider } from '@features/pushnotifications/services/pushnotifications';
 import { CoreCronDelegate, CoreCronDelegateService } from '@services/cron';
 import { CoreLoadingComponent } from '@components/loading/loading';
-import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreDom } from '@singletons/dom';
 import { Injectable } from '@angular/core';
 import { CoreSites, CoreSitesProvider } from '@services/sites';
+import { CoreNavigator, CoreNavigatorService } from '@services/navigator';
+import { CoreSwipeNavigationDirective } from '@directives/swipe-navigation';
+import { IonSlides } from '@ionic/angular';
 
 /**
  * Behat runtime servive with public API.
@@ -54,6 +57,10 @@ export class TestingBehatRuntimeService {
 
     get sites(): CoreSitesProvider {
         return CoreSites.instance;
+    }
+
+    get navigator(): CoreNavigatorService {
+        return CoreNavigator.instance;
     }
 
     /**
@@ -93,7 +100,7 @@ export class TestingBehatRuntimeService {
      * Run an operation inside the angular zone and return result.
      *
      * @param operation Operation callback.
-     * @return OK if successful, or ERROR: followed by message.
+     * @returns OK if successful, or ERROR: followed by message.
      */
     async runInZone(operation: () => unknown, blocking: boolean = false): Promise<string> {
         const blockKey = blocking && TestingBehatBlocking.block();
@@ -112,7 +119,7 @@ export class TestingBehatRuntimeService {
     /**
      * Wait all controlled components to be rendered.
      *
-     * @return Promise resolved when all components have been rendered.
+     * @returns Promise resolved when all components have been rendered.
      */
     async waitLoadingToFinish(): Promise<void> {
         await NgZone.run(async () => {
@@ -120,7 +127,7 @@ export class TestingBehatRuntimeService {
                 .filter((element) => CoreDom.isElementVisible(element));
 
             await Promise.all(elements.map(element =>
-                CoreComponentsRegistry.waitComponentReady(element, CoreLoadingComponent)));
+                CoreDirectivesRegistry.waitDirectiveReady(element, CoreLoadingComponent)));
         });
     }
 
@@ -128,7 +135,7 @@ export class TestingBehatRuntimeService {
      * Function to find and click an app standard button.
      *
      * @param button Type of button to press.
-     * @return OK if successful, or ERROR: followed by message.
+     * @returns OK if successful, or ERROR: followed by message.
      */
     async pressStandard(button: string): Promise<string> {
         this.log('Action - Click standard button: ' + button);
@@ -174,7 +181,7 @@ export class TestingBehatRuntimeService {
     /**
      * When there is a popup, clicks on the backdrop.
      *
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
     closePopup(): string {
         this.log('Action - Close popup');
@@ -202,7 +209,7 @@ export class TestingBehatRuntimeService {
      *
      * @param locator Element locator.
      * @param options Search options.
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
     find(locator: TestingBehatElementLocator, options: Partial<TestingBehatFindOptions> = {}): string {
         this.log('Action - Find', { locator, ...options });
@@ -230,7 +237,7 @@ export class TestingBehatRuntimeService {
      * Scroll an element into view.
      *
      * @param locator Element locator.
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
     scrollTo(locator: TestingBehatElementLocator): string {
         this.log('Action - scrollTo', { locator });
@@ -257,7 +264,7 @@ export class TestingBehatRuntimeService {
     /**
      * Load more items form an active list with infinite loader.
      *
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
     async loadMoreItems(): Promise<string> {
         this.log('Action - loadMoreItems');
@@ -304,7 +311,7 @@ export class TestingBehatRuntimeService {
      * Check whether an item is selected or not.
      *
      * @param locator Element locator.
-     * @return YES or NO if successful, or ERROR: followed by message
+     * @returns YES or NO if successful, or ERROR: followed by message
      */
     isSelected(locator: TestingBehatElementLocator): string {
         this.log('Action - Is Selected', locator);
@@ -326,9 +333,17 @@ export class TestingBehatRuntimeService {
      * Function to press arbitrary item based on its text or Aria label.
      *
      * @param locator Element locator.
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
-    async press(locator: TestingBehatElementLocator): Promise<string> {
+    async press(locator: TestingBehatElementLocator): Promise<string>;
+    async press(text: string, nearText?: string): Promise<string>;
+    async press(locatorOrText: TestingBehatElementLocator | string, nearText?: string): Promise<string> {
+        const locator = typeof locatorOrText === 'string' ? { text: locatorOrText } : locatorOrText;
+
+        if (nearText) {
+            locator.near = { text: nearText };
+        }
+
         this.log('Action - Press', locator);
 
         try {
@@ -349,7 +364,7 @@ export class TestingBehatRuntimeService {
     /**
      * Trigger a pull to refresh gesture in the current page.
      *
-     * @return OK if successful, or ERROR: followed by message
+     * @returns OK if successful, or ERROR: followed by message
      */
     async pullToRefresh(): Promise<string> {
         this.log('Action - pullToRefresh');
@@ -376,7 +391,7 @@ export class TestingBehatRuntimeService {
     /**
      * Gets the currently displayed page header.
      *
-     * @return OK: followed by header text if successful, or ERROR: followed by message.
+     * @returns OK: followed by header text if successful, or ERROR: followed by message.
      */
     getHeader(): string {
         this.log('Action - Get header');
@@ -402,7 +417,7 @@ export class TestingBehatRuntimeService {
      *
      * @param field Field name
      * @param value New value
-     * @return OK or ERROR: followed by message
+     * @returns OK or ERROR: followed by message
      */
     async setField(field: string, value: string): Promise<string> {
         this.log('Action - Set field ' + field + ' to: ' + value);
@@ -425,7 +440,7 @@ export class TestingBehatRuntimeService {
      *
      * @param field Field name
      * @param value New value
-     * @return OK or ERROR: followed by message
+     * @returns OK or ERROR: followed by message
      */
     async fieldMatches(field: string, value: string): Promise<string> {
         this.log('Action - Field ' + field + ' matches value: ' + value);
@@ -436,7 +451,7 @@ export class TestingBehatRuntimeService {
             return 'ERROR: No element matches field to set.';
         }
 
-        const foundValue = 'value' in found ? found.value : found.innerText;
+        const foundValue = this.getFieldValue(found);
         if (value !== foundValue) {
             return `ERROR: Expecting value "${value}", found "${foundValue}" instead.`;
         }
@@ -448,7 +463,7 @@ export class TestingBehatRuntimeService {
      * Find a field.
      *
      * @param field Field name.
-     * @return Field element.
+     * @returns Field element.
      */
     protected findField(field: string): HTMLElement | HTMLInputElement | undefined {
         return TestingBehatDomUtils.findElementBasedOnText(
@@ -458,17 +473,58 @@ export class TestingBehatRuntimeService {
     }
 
     /**
+     * Get the value of a certain field.
+     *
+     * @param element Field to get the value.
+     * @returns Value.
+     */
+    protected getFieldValue(element: HTMLElement | HTMLInputElement): string {
+        if (element.tagName === 'ION-DATETIME') {
+            // ion-datetime's value is a timestamp in ISO format. Use the text displayed to the user instead.
+            const dateTimeTextElement = element.shadowRoot?.querySelector<HTMLElement>('.datetime-text');
+            if (dateTimeTextElement) {
+                return dateTimeTextElement.innerText;
+            }
+        }
+
+        return 'value' in element ? element.value : element.innerText;
+    }
+
+    /**
      * Get an Angular component instance.
      *
      * @param selector Element selector
      * @param className Constructor class name
-     * @return Component instance
+     * @param referenceLocator The locator to the reference element to start looking for. If not specified, document body.
+     * @returns Component instance
      */
-    getAngularInstance<T = unknown>(selector: string, className: string): T | null {
-        this.log('Action - Get Angular instance ' + selector + ', ' + className);
+    getAngularInstance<T = unknown>(
+        selector: string,
+        className: string,
+        referenceLocator?: TestingBehatElementLocator,
+    ): T | null {
+        this.log('Action - Get Angular instance ' + selector + ', ' + className, referenceLocator);
+
+        let startingElement: HTMLElement | undefined = document.body;
+        let queryPrefix = '';
+
+        if (referenceLocator) {
+            startingElement = TestingBehatDomUtils.findElementBasedOnText(referenceLocator, {
+                onlyClickable: false,
+                containerName: '',
+            });
+
+            if (!startingElement) {
+                return null;
+            }
+        } else {
+            // Searching the whole DOM, search only in visible pages.
+            queryPrefix = '.ion-page:not(.ion-page-hidden) ';
+        }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const activeElement = Array.from(document.querySelectorAll<any>(`.ion-page:not(.ion-page-hidden) ${selector}`)).pop();
+        const activeElement = Array.from(startingElement.querySelectorAll<any>(`${queryPrefix}${selector}`)).pop() ??
+            startingElement.closest(selector);
 
         if (!activeElement || !activeElement.__ngContext__) {
             return null;
@@ -489,6 +545,85 @@ export class TestingBehatRuntimeService {
                 String(now.getMilliseconds()).padStart(2, '0');
 
         console.log('BEHAT: ' + nowFormatted, ...args); // eslint-disable-line no-console
+    }
+
+    /**
+     * Check a notification is present.
+     *
+     * @param title Title of the notification
+     * @returns YES or NO: depending on the result.
+     */
+    async notificationIsPresentWithText(title: string): Promise<string> {
+        const notifications = await LocalNotifications.getAllTriggered();
+
+        const notification = notifications.find((notification) => notification.title?.includes(title));
+
+        if (!notification) {
+            return 'NO';
+        }
+
+        if (!notification.id) {
+            // Cannot check but has been triggered.
+            return 'YES';
+        }
+
+        return (await LocalNotifications.isPresent(notification.id)) ? 'YES' : 'NO';
+    }
+
+    /**
+     * Close notification.
+     *
+     * @param title Title of the notification
+     * @returns OK or ERROR
+     */
+    async closeNotification(title: string): Promise<string> {
+        const notifications = await LocalNotifications.getAllTriggered();
+
+        const notification = notifications.find((notification) => notification.title?.includes(title));
+
+        if (!notification || !notification.id) {
+            return `ERROR: Notification with title ${title} cannot be closed`;
+        }
+
+        await LocalNotifications.clear(notification.id);
+
+        return 'OK';
+    }
+
+    /**
+     * Swipe in the app.
+     *
+     * @param direction Left or right.
+     * @param locator Element locator to swipe. If not specified, swipe in the first ion-content found.
+     * @returns OK if successful, or ERROR: followed by message
+     */
+    swipe(direction: string, locator?: TestingBehatElementLocator): string {
+        this.log('Action - Swipe', { direction, locator });
+
+        if (locator) {
+            // Locator specified, try to find ion-slides first.
+            const instance = this.getAngularInstance<IonSlides>('ion-slides', 'IonSlides', locator);
+            if (instance) {
+                direction === 'left' ? instance.slideNext() : instance.slidePrev();
+
+                return 'OK';
+            }
+        }
+
+        // No locator specified or ion-slides not found, search swipe navigation now.
+        const instance = this.getAngularInstance<CoreSwipeNavigationDirective>(
+            'ion-content',
+            'CoreSwipeNavigationDirective',
+            locator,
+        );
+
+        if (!instance) {
+            return 'ERROR: Element to swipe not found.';
+        }
+
+        direction === 'left' ? instance.swipeLeft() : instance.swipeRight();
+
+        return 'OK';
     }
 
 }

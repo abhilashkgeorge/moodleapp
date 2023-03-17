@@ -16,7 +16,6 @@ import { Injectable } from '@angular/core';
 import { SafeUrl } from '@angular/platform-browser';
 import { ModalOptions } from '@ionic/core';
 
-import { CoreApp } from '@services/app';
 import { CoreAnyError, CoreError } from '@classes/errors/error';
 import { DomSanitizer, makeSingleton, Translate } from '@singletons';
 import { CoreWSFile } from '@services/ws';
@@ -27,6 +26,8 @@ import { CoreDomUtils } from './dom';
 import { CoreText } from '@singletons/text';
 import { CoreUrl } from '@singletons/url';
 import { AlertButton } from '@ionic/angular';
+import { CorePath } from '@singletons/path';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Different type of errors the app can treat.
@@ -103,7 +104,7 @@ export class CoreTextUtilsProvider {
      * Add ending slash from a path or URL.
      *
      * @param text Text to treat.
-     * @return Treated text.
+     * @returns Treated text.
      */
     addEndingSlash(text: string): string {
         if (!text) {
@@ -122,7 +123,7 @@ export class CoreTextUtilsProvider {
      *
      * @param error Error message or object.
      * @param text Text to add.
-     * @return Modified error.
+     * @returns Modified error.
      */
     addTextToError(error: string | CoreError | CoreTextErrorObject | undefined | null, text: string): string | CoreTextErrorObject {
         if (typeof error == 'string') {
@@ -157,7 +158,7 @@ export class CoreTextUtilsProvider {
      *
      * @param error Error message or object.
      * @param title Title to add.
-     * @return Modified error.
+     * @returns Modified error.
      */
     addTitleToError(error: string | CoreError | CoreTextErrorObject | undefined | null, title: string): CoreTextErrorObject {
         let improvedError: CoreTextErrorObject = {};
@@ -177,7 +178,7 @@ export class CoreTextUtilsProvider {
      * Given an address as a string, return a URL to open the address in maps.
      *
      * @param address The address.
-     * @return URL to view the address.
+     * @returns URL to view the address.
      */
     buildAddressURL(address: string): SafeUrl {
         const parsedUrl = CoreUrl.parse(address);
@@ -186,7 +187,7 @@ export class CoreTextUtilsProvider {
             return DomSanitizer.bypassSecurityTrustUrl(address);
         }
 
-        return DomSanitizer.bypassSecurityTrustUrl((CoreApp.isAndroid() ? 'geo:0,0?q=' : 'http://maps.google.com?q=') +
+        return DomSanitizer.bypassSecurityTrustUrl((CorePlatform.isAndroid() ? 'geo:0,0?q=' : 'http://maps.google.com?q=') +
                 encodeURIComponent(address));
     }
 
@@ -194,7 +195,7 @@ export class CoreTextUtilsProvider {
      * Given a list of sentences, build a message with all of them wrapped in <p>.
      *
      * @param messages Messages to show.
-     * @return Message with all the messages.
+     * @returns Message with all the messages.
      */
     buildMessage(messages: string[]): string {
         let result = '';
@@ -212,7 +213,7 @@ export class CoreTextUtilsProvider {
      * Build a message with several paragraphs.
      *
      * @param paragraphs List of paragraphs.
-     * @return Built message.
+     * @returns Built message.
      */
     buildSeveralParagraphsMessage(paragraphs: (string | CoreTextErrorObject)[]): string {
         // Filter invalid messages, and convert them to messages in case they're errors.
@@ -245,7 +246,7 @@ export class CoreTextUtilsProvider {
      *
      * @param bytes Number of bytes to convert.
      * @param precision Number of digits after the decimal separator.
-     * @return Size in human readable format.
+     * @returns Size in human readable format.
      */
     bytesToSize(bytes: number, precision: number = 2): string {
         if (bytes === undefined || bytes === null || bytes < 0) {
@@ -276,10 +277,12 @@ export class CoreTextUtilsProvider {
      * Clean HTML tags.
      *
      * @param text The text to be cleaned.
-     * @param singleLine True if new lines should be removed (all the text in a single line).
-     * @return Clean text.
+     * @param options Processing options.
+     * @param options.singleLine True if new lines should be removed (all the text in a single line).
+     * @param options.trim True if text should be trimmed.
+     * @returns Clean text.
      */
-    cleanTags(text: string | undefined, singleLine?: boolean): string {
+    cleanTags(text: string | undefined, options: { singleLine?: boolean; trim?: boolean } = {}): string {
         if (!text) {
             return '';
         }
@@ -288,8 +291,10 @@ export class CoreTextUtilsProvider {
         text = text.replace(/(<([^>]+)>)/ig, '');
         // Then, we rely on the browser. We need to wrap the text to be sure is HTML.
         text = this.convertToElement(text).textContent || '';
+        // Trim text
+        text = options.trim ? text.trim() : text;
         // Recover or remove new lines.
-        text = this.replaceNewLines(text, singleLine ? ' ' : '<br>');
+        text = this.replaceNewLines(text, options.singleLine ? ' ' : '<br>');
 
         return text;
     }
@@ -299,11 +304,11 @@ export class CoreTextUtilsProvider {
      *
      * @param leftPath Left path.
      * @param rightPath Right path.
-     * @return Concatenated path.
-     * @deprecated since 4.0. Use CoreText instead.
+     * @returns Concatenated path.
+     * @deprecated since 4.0. Use CorePath instead.
      */
     concatenatePaths(leftPath: string, rightPath: string): string {
-        return CoreText.concatenatePaths(leftPath, rightPath);
+        return CorePath.concatenatePaths(leftPath, rightPath);
     }
 
     /**
@@ -311,7 +316,7 @@ export class CoreTextUtilsProvider {
      * This function is the same as in DomUtils, but we cannot use that one because of circular dependencies.
      *
      * @param html Text to convert.
-     * @return Element.
+     * @returns Element.
      */
     protected convertToElement(html: string): HTMLElement {
         // Add a div to hold the content, that's the element that will be returned.
@@ -325,7 +330,7 @@ export class CoreTextUtilsProvider {
      * This function is based on Moodle's count_words.
      *
      * @param text Text to count.
-     * @return Number of words.
+     * @returns Number of words.
      */
     countWords(text: string): number {
         if (!text || typeof text != 'string') {
@@ -363,7 +368,7 @@ export class CoreTextUtilsProvider {
      * Decode an escaped HTML text. This implementation is based on PHP's htmlspecialchars_decode.
      *
      * @param text Text to decode.
-     * @return Decoded text.
+     * @returns Decoded text.
      */
     decodeHTML(text: string | number): string {
         if (text === undefined || text === null || (typeof text == 'number' && isNaN(text))) {
@@ -385,7 +390,7 @@ export class CoreTextUtilsProvider {
      * Decode HTML entities in a text. Equivalent to PHP html_entity_decode.
      *
      * @param text Text to decode.
-     * @return Decoded text.
+     * @returns Decoded text.
      */
     decodeHTMLEntities(text: string): string {
         if (text) {
@@ -399,7 +404,7 @@ export class CoreTextUtilsProvider {
      * Same as Javascript's decodeURI, but if an exception is thrown it will return the original URI.
      *
      * @param uri URI to decode.
-     * @return Decoded URI, or original URI if an exception is thrown.
+     * @returns Decoded URI, or original URI if an exception is thrown.
      */
     decodeURI(uri: string): string {
         try {
@@ -415,7 +420,7 @@ export class CoreTextUtilsProvider {
      * Same as Javascript's decodeURIComponent, but if an exception is thrown it will return the original URI.
      *
      * @param uri URI to decode.
-     * @return Decoded URI, or original URI if an exception is thrown.
+     * @returns Decoded URI, or original URI if an exception is thrown.
      */
     decodeURIComponent(uri: string): string {
         try {
@@ -431,7 +436,7 @@ export class CoreTextUtilsProvider {
      * Escapes some characters in a string to be used as a regular expression.
      *
      * @param text Text to escape.
-     * @return Escaped text.
+     * @returns Escaped text.
      */
     escapeForRegex(text: string): string {
         if (!text || typeof text != 'string') {
@@ -446,7 +451,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text Text to escape.
      * @param doubleEncode If false, it will not convert existing html entities. Defaults to true.
-     * @return Escaped text.
+     * @returns Escaped text.
      */
     escapeHTML(text?: string | number | null, doubleEncode: boolean = true): string {
         if (text === undefined || text === null || (typeof text == 'number' && isNaN(text))) {
@@ -480,6 +485,7 @@ export class CoreTextUtilsProvider {
      * @param contextLevel The context level.
      * @param instanceId The instance ID related to the context.
      * @param courseId Course ID the text belongs to. It can be used to improve performance with filters.
+     * @returns Promise resolved when done.
      * @deprecated since 3.8.3. Please use viewText instead.
      */
     expandText(
@@ -508,7 +514,7 @@ export class CoreTextUtilsProvider {
      * Formats a text, in HTML replacing new lines by correct html new lines.
      *
      * @param text Text to format.
-     * @return Formatted text.
+     * @returns Formatted text.
      */
     formatHtmlLines(text: string): string {
         const hasHTMLTags = this.hasHTMLTags(text);
@@ -529,7 +535,7 @@ export class CoreTextUtilsProvider {
      * Get the error message from an error object.
      *
      * @param error Error.
-     * @return Error message, undefined if not found.
+     * @returns Error message, undefined if not found.
      */
     getErrorMessageFromError(error?: CoreAnyError): string | undefined {
         if (typeof error == 'string') {
@@ -551,7 +557,7 @@ export class CoreTextUtilsProvider {
      * Given some HTML code, return the HTML code inside <body> tags. If there are no body tags, return the whole HTML.
      *
      * @param html HTML text.
-     * @return Body HTML.
+     * @returns Body HTML.
      */
     getHTMLBodyContent(html: string): string {
         const matches = html.match(/<body>([\s\S]*)<\/body>/im);
@@ -563,7 +569,7 @@ export class CoreTextUtilsProvider {
      * Get the pluginfile URL to replace @@PLUGINFILE@@ wildcards.
      *
      * @param files Files to extract the URL from. They need to have the URL in a 'url' or 'fileurl' attribute.
-     * @return Pluginfile URL, undefined if no files found.
+     * @returns Pluginfile URL, undefined if no files found.
      */
     getTextPluginfileUrl(files: CoreWSFile[]): string | undefined {
         if (files?.length) {
@@ -580,7 +586,7 @@ export class CoreTextUtilsProvider {
      * Check if a text contains HTML tags.
      *
      * @param text Text to check.
-     * @return Whether it has HTML tags.
+     * @returns Whether it has HTML tags.
      */
     hasHTMLTags(text: string): boolean {
         return /<[a-z][\s\S]*>/i.test(text);
@@ -591,7 +597,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text Full text.
      * @param searchText Text to search and highlight.
-     * @return Highlighted text.
+     * @returns Highlighted text.
      */
     highlightText(text: string, searchText: string): string {
         if (!text || typeof text != 'string') {
@@ -609,7 +615,7 @@ export class CoreTextUtilsProvider {
      * Check if HTML content is blank.
      *
      * @param content HTML content.
-     * @return True if the string does not contain actual content: text, images, etc.
+     * @returns True if the string does not contain actual content: text, images, etc.
      */
     htmlIsBlank(content: string): boolean {
         if (!content) {
@@ -626,7 +632,7 @@ export class CoreTextUtilsProvider {
      * Using as threshold Hex value D800
      *
      * @param text Text to check.
-     * @return True if has Unicode chars, false otherwise.
+     * @returns True if has Unicode chars, false otherwise.
      */
     hasUnicode(text: string): boolean {
         for (let x = 0; x < text.length; x++) {
@@ -642,7 +648,7 @@ export class CoreTextUtilsProvider {
      * Check if an object has any long Unicode char.
      *
      * @param data Object to be checked.
-     * @return If the data has any long Unicode char on it.
+     * @returns If the data has any long Unicode char on it.
      */
     hasUnicodeData(data: Record<string, unknown>): boolean {
         for (const el in data) {
@@ -667,7 +673,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text Text to match against.
      * @param pattern Glob pattern.
-     * @return Whether the pattern matches.
+     * @returns Whether the pattern matches.
      */
     matchesGlob(text: string, pattern: string): boolean {
         pattern = pattern
@@ -691,7 +697,7 @@ export class CoreTextUtilsProvider {
      * @param json JSON text.
      * @param defaultValue Default value to return if the parse fails. Defaults to the original value.
      * @param logErrorFn An error to call with the exception to log the error. If not supplied, no error.
-     * @return JSON parsed as object or what it gets.
+     * @returns JSON parsed as object or what it gets.
      */
     parseJSON<T>(json: string, defaultValue?: T, logErrorFn?: (error?: Error) => void): T {
         try {
@@ -712,6 +718,10 @@ export class CoreTextUtilsProvider {
     }
 
     /**
+     * Remove ending slash from a path or URL.
+     *
+     * @param text Text to treat.
+     * @returns Treated text.
      * @deprecated since 3.9.5. Use CoreText instead.
      */
     removeEndingSlash(text?: string): string {
@@ -722,7 +732,7 @@ export class CoreTextUtilsProvider {
      * Replace all characters that cause problems with files in Android and iOS.
      *
      * @param text Text to treat.
-     * @return Treated text.
+     * @returns Treated text.
      */
     removeSpecialCharactersForFiles(text: string): string {
         if (!text || typeof text != 'string') {
@@ -759,7 +769,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text The text to be treated.
      * @param newValue Text to use instead of new lines.
-     * @return Treated text.
+     * @returns Treated text.
      */
     replaceNewLines(text: string, newValue: string): string {
         if (!text || typeof text != 'string') {
@@ -775,7 +785,7 @@ export class CoreTextUtilsProvider {
      * @param siteUrl URL of the site.
      * @param text Text to treat, including draftfile URLs.
      * @param files List of files of the area, using pluginfile URLs.
-     * @return Treated text and map with the replacements.
+     * @returns Treated text and map with the replacements.
      */
     replaceDraftfileUrls(
         siteUrl: string,
@@ -787,7 +797,7 @@ export class CoreTextUtilsProvider {
             return { text };
         }
 
-        const draftfileUrl = CoreText.concatenatePaths(siteUrl, 'draftfile.php');
+        const draftfileUrl = CorePath.concatenatePaths(siteUrl, 'draftfile.php');
         const matches = text.match(new RegExp(this.escapeForRegex(draftfileUrl) + '[^\'" ]+', 'ig'));
 
         if (!matches || !matches.length) {
@@ -831,7 +841,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text to treat.
      * @param files Files to extract the pluginfile URL from. They need to have the URL in a url or fileurl attribute.
-     * @return Treated text.
+     * @returns Treated text.
      */
     replacePluginfileUrls(text: string, files: CoreWSFile[]): string {
         if (text && typeof text == 'string') {
@@ -851,14 +861,14 @@ export class CoreTextUtilsProvider {
      * @param treatedText Treated text with replacements.
      * @param originalText Original text.
      * @param files List of files to search and replace.
-     * @return Treated text.
+     * @returns Treated text.
      */
     restoreDraftfileUrls(siteUrl: string, treatedText: string, originalText: string, files: CoreWSFile[]): string {
         if (!treatedText || !files || !files.length) {
             return treatedText;
         }
 
-        const draftfileUrl = CoreText.concatenatePaths(siteUrl, 'draftfile.php');
+        const draftfileUrl = CorePath.concatenatePaths(siteUrl, 'draftfile.php');
         const draftfileUrlRegexPrefix = this.escapeForRegex(draftfileUrl) + '/[^/]+/[^/]+/[^/]+/[^/]+/';
 
         files.forEach((file) => {
@@ -882,7 +892,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text Text to treat.
      * @param files Files to extract the pluginfile URL from. They need to have the URL in a url or fileurl attribute.
-     * @return Treated text.
+     * @returns Treated text.
      */
     restorePluginfileUrls(text: string, files: CoreWSFile[]): string {
         if (text && typeof text == 'string') {
@@ -903,7 +913,7 @@ export class CoreTextUtilsProvider {
      *
      * @param num Number to round.
      * @param decimals Number of decimals. By default, 2.
-     * @return Rounded number.
+     * @returns Rounded number.
      */
     roundToDecimals(num: number, decimals: number = 2): number {
         const multiplier = Math.pow(10, decimals);
@@ -918,7 +928,7 @@ export class CoreTextUtilsProvider {
      * Based on Moodle's s() function.
      *
      * @param text Text to treat.
-     * @return Treated text.
+     * @returns Treated text.
      */
     s(text: string): string {
         if (!text) {
@@ -933,7 +943,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text The text to be shortened.
      * @param length The desired length.
-     * @return Shortened text.
+     * @returns Shortened text.
      */
     shortenText(text: string, length: number): string {
         if (text.length > length) {
@@ -955,7 +965,7 @@ export class CoreTextUtilsProvider {
      * Using as threshold Hex value D800
      *
      * @param text Text to check.
-     * @return Without the Unicode chars.
+     * @returns Without the Unicode chars.
      */
     stripUnicode(text: string): string {
         let stripped = '';
@@ -976,7 +986,7 @@ export class CoreTextUtilsProvider {
      * @param start The index where to start putting the new string. If negative, it will count from the end of the string.
      * @param length Length of the portion of string which is to be replaced. If negative, it represents the number of characters
      *               from the end of string at which to stop replacing. If not provided, replace until the end of the string.
-     * @return Treated string.
+     * @returns Treated string.
      */
     substrReplace(str: string, replace: string, start: number, length?: number): string {
         return Locutus.substrReplace(str, replace, start, length);
@@ -986,7 +996,7 @@ export class CoreTextUtilsProvider {
      * Treat the list of disabled features, replacing old nomenclature with the new one.
      *
      * @param features List of disabled features.
-     * @return Treated list.
+     * @returns Treated list.
      */
     treatDisabledFeatures(features: string): string {
         if (!features) {
@@ -1007,7 +1017,7 @@ export class CoreTextUtilsProvider {
      *
      * @param text Text to treat.
      * @param character Character to remove.
-     * @return Treated text.
+     * @returns Treated text.
      */
     trimCharacter(text: string, character: string): string {
         const escaped = this.escapeForRegex(character);
@@ -1020,7 +1030,7 @@ export class CoreTextUtilsProvider {
      * If a number has only 1 digit, add a leading zero to it.
      *
      * @param num Number to convert.
-     * @return Number with leading zeros.
+     * @returns Number with leading zeros.
      */
     twoDigits(num: string | number): string {
         if (num < 10) {
@@ -1034,7 +1044,7 @@ export class CoreTextUtilsProvider {
      * Make a string's first character uppercase.
      *
      * @param text Text to treat.
-     * @return Treated text.
+     * @returns Treated text.
      */
     ucFirst(text: string): string {
         return text.charAt(0).toUpperCase() + text.slice(1);
@@ -1044,7 +1054,7 @@ export class CoreTextUtilsProvider {
      * Unserialize Array from PHP.
      *
      * @param data String to unserialize.
-     * @return Unserialized data.
+     * @returns Unserialized data.
      */
     unserialize<T = unknown>(data: string): T {
         return Locutus.unserialize<T>(data);
@@ -1056,7 +1066,7 @@ export class CoreTextUtilsProvider {
      * @param title Title of the new state.
      * @param content Content of the text to be expanded.
      * @param options Options.
-     * @return Promise resolved when the modal is displayed.
+     * @returns Promise resolved when the modal is displayed.
      */
     async viewText(title: string, content: string, options?: CoreTextUtilsViewTextOptions): Promise<void> {
         if (!content.length) {

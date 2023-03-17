@@ -7,6 +7,12 @@
         <ion-title>
             <h1>{{ 'core.login.reconnect' | translate }}</h1>
         </ion-title>
+
+        <ion-buttons slot="end">
+            <ion-button fill="clear" (click)="showHelp()" [attr.aria-label]="'core.help' | translate">
+                <ion-icon slot="icon-only" name="far-question-circle" aria-hidden="true"></ion-icon>
+            </ion-button>
+        </ion-buttons>
     </ion-toolbar>
 </ion-header>
 <ion-content class="ion-padding" (keydown)="keyDown($event)" (keyup)="keyUp($event)">
@@ -36,6 +42,11 @@
                         </ion-label>
                     </ion-item>
                 </ion-card>
+
+                <core-login-exceeded-attempts *ngIf="exceededAttemptsHTML && supportConfig && reconnectAttempts >= 3"
+                    [supportConfig]="supportConfig" [supportSubject]="'core.login.exceededloginattemptssupportsubject' | translate">
+                    <div [innerHTML]="exceededAttemptsHTML" (click)="exceededAttemptsClicked($event)"></div>
+                </core-login-exceeded-attempts>
             </div>
             <form *ngIf="!isOAuth" [formGroup]="credForm" (ngSubmit)="login($event)" class="core-login-form" #reconnectForm>
                 <ion-item class="ion-text-wrap core-username item-interactive">
@@ -52,13 +63,13 @@
                         </ion-input>
                     </core-show-password>
                 </ion-item>
-                <div class="adaptable-buttons-row">
-                    <ion-button expand="block" fill="outline" (click)="cancel($event)" class="ion-margin ion-text-wrap">
-                        {{ 'core.login.cancel' | translate }}
-                    </ion-button>
+                <div class="adaptable-buttons-row-reverse">
                     <ion-button *ngIf="!isBrowserSSO" type="submit" expand="block" [disabled]="!credForm.valid"
                         class="ion-margin core-login-login-button ion-text-wrap">
                         {{ 'core.login.loginbutton' | translate }}
+                    </ion-button>
+                    <ion-button expand="block" fill="outline" (click)="cancel($event)" class="ion-margin ion-text-wrap">
+                        {{ 'core.login.cancel' | translate }}
                     </ion-button>
                 </div>
 
@@ -67,8 +78,18 @@
                     {{ 'core.login.loginbutton' | translate }}
                 </ion-button>
 
+                <!-- Forgotten password option. -->
+                <ion-button *ngIf="showForgottenPassword && !isOAuth" expand="block" fill="clear"
+                    class="core-login-forgotten-password core-button-as-link ion-text-wrap" (click)="forgottenPassword()">
+                    {{ 'core.login.forgotten' | translate }}
+                </ion-button>
+
+                <div class="ion-text-center ion-padding core-login-site-qrcode-separator">{{ 'core.login.or' | translate }}</div>
+
+                <!-- Login methods -->
+                <core-login-methods></core-login-methods>
+
                 <ng-container *ngIf="showScanQR && !isBrowserSSO">
-                    <div class="ion-text-center ion-padding core-login-site-qrcode-separator">{{ 'core.login.or' | translate }}</div>
                     <ion-button expand="block" fill="outline" class="ion-margin core-login-site-qrcode"
                         (click)="showInstructionsAndScanQR()">
                         <ion-icon slot="start" name="fas-qrcode" aria-hidden="true"></ion-icon>
@@ -77,20 +98,13 @@
                 </ng-container>
             </form>
 
-            <!-- Forgotten password option. -->
-            <ion-button *ngIf="showForgottenPassword && !isOAuth" expand="block" fill="clear"
-                class="core-login-forgotten-password core-button-as-link ion-text-wrap" (click)="forgottenPassword()">
-                {{ 'core.login.forgotten' | translate }}
-            </ion-button>
 
-            <!-- Login methods -->
-            <core-login-methods></core-login-methods>
 
             <!-- Identity providers. -->
             <ion-list *ngIf="identityProviders?.length" class="ion-padding-top core-login-identity-providers">
                 <ion-item class="ion-text-wrap">
                     <ion-label>
-                        <h3 class="item-heading">{{ 'core.login.potentialidps' | translate }}</h3>
+                        <h2 class="item-heading">{{ 'core.login.potentialidps' | translate }}</h2>
                     </ion-label>
                 </ion-item>
                 <ion-button [fill]="'outline'" *ngFor="let provider of identityProviders"

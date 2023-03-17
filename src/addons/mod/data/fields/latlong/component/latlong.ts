@@ -18,8 +18,8 @@ import { Component } from '@angular/core';
 import { FormBuilder } from '@angular/forms';
 import { SafeUrl } from '@angular/platform-browser';
 import { CoreAnyError } from '@classes/errors/error';
-import { CoreApp } from '@services/app';
 import { CoreGeolocation, CoreGeolocationError, CoreGeolocationErrorReason } from '@services/geolocation';
+import { CorePlatform } from '@services/platform';
 import { CoreDomUtils } from '@services/utils/dom';
 import { DomSanitizer } from '@singletons';
 
@@ -45,7 +45,7 @@ export class AddonModDataFieldLatlongComponent extends AddonModDataFieldPluginBa
      *
      * @param north Degrees north.
      * @param east Degrees East.
-     * @return Readable Latitude and logitude.
+     * @returns Readable Latitude and logitude.
      */
     formatLatLong(north?: number, east?: number): string {
         if (north !== undefined || east !== undefined) {
@@ -65,7 +65,7 @@ export class AddonModDataFieldLatlongComponent extends AddonModDataFieldPluginBa
      *
      * @param north Degrees north.
      * @param east Degrees East.
-     * @return Link to maps depending on platform.
+     * @returns Link to maps depending on platform.
      */
     getLatLongLink(north?: number, east?: number): SafeUrl {
         let url = '';
@@ -73,7 +73,7 @@ export class AddonModDataFieldLatlongComponent extends AddonModDataFieldPluginBa
             const northFixed = north ? north.toFixed(4) : '0.0000';
             const eastFixed = east ? east.toFixed(4) : '0.0000';
 
-            if (CoreApp.isIOS()) {
+            if (CorePlatform.isIOS()) {
                 url = 'http://maps.apple.com/?ll=' + northFixed + ',' + eastFixed + '&near=' + northFixed + ',' + eastFixed;
             } else {
                 url = 'geo:' + northFixed + ',' + eastFixed;
@@ -113,7 +113,7 @@ export class AddonModDataFieldLatlongComponent extends AddonModDataFieldPluginBa
     /**
      * Get user location.
      *
-     * @param $event The event.
+     * @param event The event.
      */
     async getLocation(event: Event): Promise<void> {
         event.preventDefault();
@@ -151,6 +151,7 @@ export class AddonModDataFieldLatlongComponent extends AddonModDataFieldPluginBa
      * Get error message from a geolocation error.
      *
      * @param error Geolocation error.
+     * @returns Geolocation message to be translated.
      */
     protected getGeolocationErrorMessage(error: CoreGeolocationError): string {
         // tslint:disable-next-line: switch-default

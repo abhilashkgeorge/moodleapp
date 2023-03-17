@@ -1,6 +1,6 @@
 {
-    "app_id": "com.goscore.goscore",
-    "appname": "goscore",
+    "app_id": "com.abhilashkgeorge.eduskills",
+    "appname": "EduSkills",
     "versioncode": 1,
     "versionname": "1.0.0",
     "cache_update_frequency_usually": 420000,
@@ -53,6 +53,7 @@
         "ro": "Română",
         "ru": "Русский",
         "sl": "Slovenščina",
+        "sq": "Shqip",
         "sr-cr": "Српски",
         "sr-lt": "Srpski",
         "sv": "Svenska",
@@ -96,5 +97,6 @@
         "short": 2000,
         "long": 3500,
         "sticky": 0
-    }
+    },
+    "disableTokenFile": false
 }

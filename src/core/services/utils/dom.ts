@@ -51,9 +51,13 @@ import { CoreSites } from '@services/sites';
 import { NavigationStart } from '@angular/router';
 import { filter } from 'rxjs/operators';
 import { Subscription } from 'rxjs';
-import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreDom } from '@singletons/dom';
 import { CoreNetwork } from '@services/network';
+import { CoreSiteError } from '@classes/errors/siteerror';
+import { CoreUserSupport } from '@features/user/services/support';
+import { CoreErrorInfoComponent } from '@components/error-info/error-info';
+import { CorePlatform } from '@services/platform';
 
 /*
  * "Utils" service with helper functions for UI, DOM elements and HTML code.
@@ -99,7 +103,7 @@ export class CoreDomUtilsProvider {
      *
      * @param element DOM Element.
      * @param selector Selector to search.
-     * @return Closest ancestor.
+     * @returns Closest ancestor.
      * @deprecated since app 4.0 Not needed anymore since it's supported on both Android and iOS. Use closest instead.
      */
     closest(element: Element | undefined | null, selector: string): Element | null {
@@ -115,7 +119,7 @@ export class CoreDomUtilsProvider {
      * @param wifiThreshold Threshold to show confirm in WiFi connection. Default: CoreWifiDownloadThreshold.
      * @param limitedThreshold Threshold to show confirm in limited connection. Default: CoreDownloadThreshold.
      * @param alwaysConfirm True to show a confirm even if the size isn't high, false otherwise.
-     * @return Promise resolved when the user confirms or if no confirm needed.
+     * @returns Promise resolved when the user confirms or if no confirm needed.
      */
     async confirmDownloadSize(
         size: CoreFileSizeSum,
@@ -130,7 +134,7 @@ export class CoreDomUtilsProvider {
         const getAvailableBytes = async (): Promise<number | null> => {
             const availableBytes = await CoreFile.calculateFreeSpace();
 
-            if (CoreApp.isAndroid()) {
+            if (CorePlatform.isAndroid()) {
                 return availableBytes;
             } else {
                 // Space calculation is not accurate on iOS, but it gets more accurate when space is lower.
@@ -149,7 +153,7 @@ export class CoreDomUtilsProvider {
             } else {
                 const availableSize = CoreTextUtils.bytesToSize(availableBytes, 2);
 
-                if (CoreApp.isAndroid() && size.size > availableBytes - CoreConstants.MINIMUM_FREE_SPACE) {
+                if (CorePlatform.isAndroid() && size.size > availableBytes - CoreConstants.MINIMUM_FREE_SPACE) {
                     throw new CoreError(
                         Translate.instant(
                             'core.course.insufficientavailablespace',
@@ -210,7 +214,7 @@ export class CoreDomUtilsProvider {
      * Convert some HTML as text into an HTMLElement. This HTML is put inside a div or a body.
      *
      * @param html Text to convert.
-     * @return Element.
+     * @returns Element.
      */
     convertToElement(html: string): HTMLElement {
         // Add a div to hold the content, that's the element that will be returned.
@@ -222,7 +226,7 @@ export class CoreDomUtilsProvider {
     /**
      * Create a "cancelled" error. These errors won't display an error message in showErrorModal functions.
      *
-     * @return The error object.
+     * @returns The error object.
      * @deprecated since 3.9.5. Just create the error directly.
      */
     createCanceledError(): CoreCanceledError {
@@ -234,7 +238,7 @@ export class CoreDomUtilsProvider {
      * passed to the ngOnChanges functions.
      *
      * @param changes Changes detected by KeyValueDiffer.
-     * @return Changes in a format like ngOnChanges.
+     * @returns Changes in a format like ngOnChanges.
      */
     createChangesFromKeyValueDiff(changes: KeyValueChanges<string, unknown>): { [name: string]: SimpleChange } {
         const newChanges: { [name: string]: SimpleChange } = {};
@@ -259,7 +263,7 @@ export class CoreDomUtilsProvider {
      * Search all the URLs in a CSS file content.
      *
      * @param code CSS code.
-     * @return List of URLs.
+     * @returns List of URLs.
      */
     extractUrlsFromCSS(code: string): string[] {
         // First of all, search all the url(...) occurrences that don't include "data:".
@@ -285,7 +289,7 @@ export class CoreDomUtilsProvider {
      * Fix syntax errors in HTML.
      *
      * @param html HTML text.
-     * @return Fixed HTML text.
+     * @returns Fixed HTML text.
      */
     fixHtml(html: string): string {
         this.template.innerHTML = html;
@@ -335,7 +339,7 @@ export class CoreDomUtilsProvider {
 
             if (focusElement === document.activeElement) {
                 await CoreUtils.nextTick();
-                if (CoreApp.isAndroid() && this.supportsInputKeyboard(focusElement)) {
+                if (CorePlatform.isAndroid() && this.supportsInputKeyboard(focusElement)) {
                     // On some Android versions the keyboard doesn't open automatically.
                     CoreApp.openKeyboard();
                 }
@@ -354,7 +358,7 @@ export class CoreDomUtilsProvider {
      * Returned size will have a format like '500px'.
      *
      * @param size Size to format.
-     * @return Formatted size. If size is not valid, returns an empty string.
+     * @returns Formatted size. If size is not valid, returns an empty string.
      */
     formatPixelsSize(size: string | number): string {
         if (typeof size == 'string' && (size.indexOf('px') > -1 || size.indexOf('%') > -1 || size == 'auto' || size == 'initial')) {
@@ -379,7 +383,7 @@ export class CoreDomUtilsProvider {
      *
      * @param element DOM element to search in.
      * @param selector Selector to search.
-     * @return Selection contents. Undefined if not found.
+     * @returns Selection contents. Undefined if not found.
      */
     getContentsOfElement(element: HTMLElement, selector: string): string | undefined {
         const selected = element.querySelector(selector);
@@ -392,7 +396,7 @@ export class CoreDomUtilsProvider {
      * Get the data from a form. It will only collect elements that have a name.
      *
      * @param form The form to get the data from.
-     * @return Object with the data. The keys are the names of the inputs.
+     * @returns Object with the data. The keys are the names of the inputs.
      * @deprecated since 3.9.5. Function has been moved to CoreForms.
      */
     getDataFromForm(form: HTMLFormElement): CoreFormFields {
@@ -404,7 +408,7 @@ export class CoreDomUtilsProvider {
      *
      * @param html HTML element in string.
      * @param attribute Attribute to get.
-     * @return Attribute value.
+     * @returns Attribute value.
      */
     getHTMLElementAttribute(html: string, attribute: string): string | null {
         return this.convertToElement(html).children[0].getAttribute(attribute);
@@ -418,7 +422,7 @@ export class CoreDomUtilsProvider {
      * @param useMargin Whether to use margin to calculate the measure.
      * @param useBorder Whether to use borders to calculate the measure.
      * @param innerMeasure If inner measure is needed: padding, margin or borders will be substracted.
-     * @return Height in pixels.
+     * @returns Height in pixels.
      * @deprecated since app 4.0 Use getBoundingClientRect.height instead.
      */
     getElementHeight(
@@ -440,7 +444,7 @@ export class CoreDomUtilsProvider {
      * @param useMargin Whether to use margin to calculate the measure.
      * @param useBorder Whether to use borders to calculate the measure.
      * @param innerMeasure If inner measure is needed: padding, margin or borders will be substracted.
-     * @return Measure in pixels.
+     * @returns Measure in pixels.
      * @deprecated since app 4.0 Use getBoundingClientRect.height or width instead.
      */
     getElementMeasure(
@@ -499,7 +503,7 @@ export class CoreDomUtilsProvider {
      *
      * @param style Style from getComputedStyle.
      * @param measure Measure to get.
-     * @return Result of the measure.
+     * @returns Result of the measure.
      */
     getComputedStyleMeasure(style: CSSStyleDeclaration, measure: string): number {
         return parseInt(style[measure], 10) || 0;
@@ -513,7 +517,7 @@ export class CoreDomUtilsProvider {
      * @param useMargin Whether to use margin to calculate the measure.
      * @param useBorder Whether to use borders to calculate the measure.
      * @param innerMeasure If inner measure is needed: padding, margin or borders will be substracted.
-     * @return Width in pixels.
+     * @returns Width in pixels.
      * @deprecated since app 4.0 Use getBoundingClientRect.width instead.
      */
     getElementWidth(
@@ -532,7 +536,7 @@ export class CoreDomUtilsProvider {
      * @param element Element to search in.
      * @param selector Selector to find the element to gets the position.
      * @param positionParentClass Parent Class where to stop calculating the position. Default inner-scroll.
-     * @return positionLeft, positionTop of the element relative to.
+     * @returns positionLeft, positionTop of the element relative to.
      * @deprecated since app 4.0. Use CoreDom.getRelativeElementPosition instead.
      */
     getElementXY(element: HTMLElement, selector?: string, positionParentClass = 'inner-scroll'): [number, number] | null {
@@ -565,7 +569,7 @@ export class CoreDomUtilsProvider {
      *
      * @param message Message text.
      * @param error Error object.
-     * @return True if the message error is a network error, false otherwise.
+     * @returns True if the message error is a network error, false otherwise.
      */
     protected isNetworkError(message: string, error?: CoreError | CoreTextErrorObject | string): boolean {
         return message == Translate.instant('core.networkerrormsg') ||
@@ -574,11 +578,25 @@ export class CoreDomUtilsProvider {
     }
 
     /**
+     * Given a message, check if it's a site unavailable error.
+     *
+     * @param message Message text.
+     * @returns Whether the message is a site unavailable error.
+     */
+    protected isSiteUnavailableError(message: string): boolean {
+        let siteUnavailableMessage = Translate.instant('core.siteunavailablehelp', { site: 'SITEURLPLACEHOLDER' });
+        siteUnavailableMessage = CoreTextUtils.escapeForRegex(siteUnavailableMessage);
+        siteUnavailableMessage = siteUnavailableMessage.replace('SITEURLPLACEHOLDER', '.*');
+
+        return new RegExp(siteUnavailableMessage).test(message);
+    }
+
+    /**
      * Get the error message from an error, including debug data if needed.
      *
      * @param error Message to show.
      * @param needsTranslate Whether the error needs to be translated.
-     * @return Error message, null if no error should be displayed.
+     * @returns Error message, null if no error should be displayed.
      */
     getErrorMessage(error: CoreError | CoreTextErrorObject | string, needsTranslate?: boolean): string | null {
         if (typeof error != 'string' && !error) {
@@ -647,18 +665,18 @@ export class CoreDomUtilsProvider {
      * or Angular's injection.
      *
      * @param element The root element of the component/directive.
-     * @return The instance, undefined if not found.
-     * @deprecated since 4.0.0. Use CoreComponentsRegistry instead.
+     * @returns The instance, undefined if not found.
+     * @deprecated since 4.0.0. Use CoreDirectivesRegistry instead.
      */
     getInstanceByElement<T = unknown>(element: Element): T | undefined {
-        return CoreComponentsRegistry.resolve<T>(element) ?? undefined;
+        return CoreDirectivesRegistry.resolve<T>(element) ?? undefined;
     }
 
     /**
      * Check whether an error is an error caused because the user canceled a showConfirm.
      *
      * @param error Error to check.
-     * @return Whether it's a canceled error.
+     * @returns Whether it's a canceled error.
      */
     isCanceledError(error: CoreAnyError): boolean {
         return error instanceof CoreCanceledError;
@@ -668,7 +686,7 @@ export class CoreDomUtilsProvider {
      * Check whether an error is an error caused because the user canceled a showConfirm.
      *
      * @param error Error to check.
-     * @return Whether it's a canceled error.
+     * @returns Whether it's a canceled error.
      */
     isSilentError(error: CoreAnyError): boolean {
         return error instanceof CoreSilentError;
@@ -680,7 +698,7 @@ export class CoreDomUtilsProvider {
      * @param findFunction The function used to find the element.
      * @param retries Number of retries before giving up.
      * @param retryAfter Milliseconds to wait before retrying if the element wasn't found.
-     * @return Resolved if found, rejected if too many tries.
+     * @returns Resolved if found, rejected if too many tries.
      * @deprecated since app 4.0 Use CoreDom.waitToBeInsideElement instead.
      */
     async waitElementToExist(
@@ -748,7 +766,7 @@ export class CoreDomUtilsProvider {
      * @param scrollEl The element that must be scrolled.
      * @param element DOM element to check.
      * @param point The point of the element to check.
-     * @return Whether the element is outside of the viewport.
+     * @returns Whether the element is outside of the viewport.
      */
     isElementOutsideOfScreen(
         scrollEl: HTMLElement,
@@ -785,7 +803,7 @@ export class CoreDomUtilsProvider {
     /**
      * Check if rich text editor is enabled.
      *
-     * @return Promise resolved with boolean: true if enabled, false otherwise.
+     * @returns Promise resolved with boolean: true if enabled, false otherwise.
      */
     async isRichTextEditorEnabled(): Promise<boolean> {
         const enabled = await CoreConfig.get(CoreConstants.SETTINGS_RICH_TEXT_EDITOR, true);
@@ -796,7 +814,7 @@ export class CoreDomUtilsProvider {
     /**
      * Check if rich text editor is supported in the platform.
      *
-     * @return Whether it's supported.
+     * @returns Whether it's supported.
      * @deprecated since 3.9.5
      */
     isRichTextEditorSupported(): boolean {
@@ -809,7 +827,7 @@ export class CoreDomUtilsProvider {
      * @param oldParent The old parent.
      * @param newParent The new parent.
      * @param prepend If true, adds the children to the beginning of the new parent.
-     * @return List of moved children.
+     * @returns List of moved children.
      */
     moveChildren(oldParent: HTMLElement, newParent: HTMLElement, prepend?: boolean): Node[] {
         const movedChildren: Node[] = [];
@@ -844,7 +862,7 @@ export class CoreDomUtilsProvider {
      * @param html HTML code to change.
      * @param selector Selector to search.
      * @param removeAll True if it should remove all matches found, false if it should only remove the first one.
-     * @return HTML without the element.
+     * @returns HTML without the element.
      */
     removeElementFromHtml(html: string, selector: string, removeAll?: boolean): string {
         const element = this.convertToElement(html);
@@ -910,7 +928,7 @@ export class CoreDomUtilsProvider {
      * @param html HTML code.
      * @param paths Object linking URLs in the html code with the real URLs to use.
      * @param anchorFn Function to call with each anchor. Optional.
-     * @return Treated HTML code.
+     * @returns Treated HTML code.
      */
     restoreSourcesInHtml(
         html: string,
@@ -968,7 +986,7 @@ export class CoreDomUtilsProvider {
      * @param x The x-value to scroll to.
      * @param y The y-value to scroll to.
      * @param duration Duration of the scroll animation in milliseconds.
-     * @return Returns a promise which is resolved when the scroll has completed.
+     * @returns Returns a promise which is resolved when the scroll has completed.
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollTo(content: IonContent, x: number, y: number, duration = 0): Promise<void> {
@@ -980,7 +998,7 @@ export class CoreDomUtilsProvider {
      *
      * @param content Content to scroll.
      * @param duration Duration of the scroll animation in milliseconds.
-     * @return Returns a promise which is resolved when the scroll has completed.
+     * @returns Returns a promise which is resolved when the scroll has completed.
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollToBottom(content: IonContent, duration = 0): Promise<void> {
@@ -992,7 +1010,7 @@ export class CoreDomUtilsProvider {
      *
      * @param content Content to scroll.
      * @param duration Duration of the scroll animation in milliseconds.
-     * @return Returns a promise which is resolved when the scroll has completed.
+     * @returns Returns a promise which is resolved when the scroll has completed.
      * @deprecated since 3.9.5. Use directly the IonContent class.
      */
     scrollToTop(content: IonContent, duration = 0): Promise<void> {
@@ -1003,7 +1021,7 @@ export class CoreDomUtilsProvider {
      * Returns height of the content.
      *
      * @param content Content where to execute the function.
-     * @return Promise resolved with content height.
+     * @returns Promise resolved with content height.
      */
     async getContentHeight(content: IonContent): Promise<number> {
         try {
@@ -1019,7 +1037,7 @@ export class CoreDomUtilsProvider {
      * Returns scroll height of the content.
      *
      * @param content Content where to execute the function.
-     * @return Promise resolved with scroll height.
+     * @returns Promise resolved with scroll height.
      */
     async getScrollHeight(content: IonContent): Promise<number> {
         try {
@@ -1035,7 +1053,7 @@ export class CoreDomUtilsProvider {
      * Returns scrollTop of the content.
      *
      * @param content Content where to execute the function.
-     * @return Promise resolved with scroll top.
+     * @returns Promise resolved with scroll top.
      */
     async getScrollTop(content: IonContent): Promise<number> {
         try {
@@ -1054,7 +1072,7 @@ export class CoreDomUtilsProvider {
      * @param element The element to scroll to.
      * @param scrollParentClass Not used anymore.
      * @param duration Duration of the scroll animation in milliseconds.
-     * @return True if the element is found, false otherwise.
+     * @returns True if the element is found, false otherwise.
      * @deprecated since app 4.0 Use CoreDom.scrollToElement instead.
      */
     scrollToElement(content: IonContent, element: HTMLElement, scrollParentClass?: string, duration?: number): boolean {
@@ -1071,7 +1089,7 @@ export class CoreDomUtilsProvider {
      * @param selector Selector to find the element to scroll to.
      * @param scrollParentClass Not used anymore.
      * @param duration Duration of the scroll animation in milliseconds.
-     * @return True if the element is found, false otherwise.
+     * @returns True if the element is found, false otherwise.
      * @deprecated since app 4.0 Use CoreDom.scrollToElement instead.
      */
     scrollToElementBySelector(
@@ -1095,7 +1113,7 @@ export class CoreDomUtilsProvider {
      * Search for an input with error (core-input-error directive) and scrolls to it if found.
      *
      * @param container The element that contains the element that must be scrolled.
-     * @return True if the element is found, false otherwise.
+     * @returns True if the element is found, false otherwise.
      * @deprecated since app 4.0 Use CoreDom.scrollToInputError instead.
      */
     scrollToInputError(container: HTMLElement | null): boolean {
@@ -1120,11 +1138,11 @@ export class CoreDomUtilsProvider {
     /**
      * Show an alert modal with a button to close it.
      *
-     * @param title Title to show.
+     * @param header Title to show.
      * @param message Message to show.
      * @param buttonText Text of the button.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     async showAlert(
         header: string | undefined,
@@ -1144,7 +1162,7 @@ export class CoreDomUtilsProvider {
      *
      * @param options Alert options to pass to the alert.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     async showAlertWithOptions(options: AlertOptions = {}, autocloseTime?: number): Promise<HTMLIonAlertElement> {
         const hasHTMLTags = CoreTextUtils.hasHTMLTags(<string> options.message || '');
@@ -1212,11 +1230,11 @@ export class CoreDomUtilsProvider {
     /**
      * Show an alert modal with a button to close it, translating the values supplied.
      *
-     * @param title Title to show.
+     * @param header Title to show.
      * @param message Message to show.
      * @param buttonText Text of the button.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     showAlertTranslated(
         header: string | undefined,
@@ -1237,7 +1255,7 @@ export class CoreDomUtilsProvider {
      * @param translateMessage String key to show in the modal body translated. Default: 'core.areyousure'.
      * @param translateArgs Arguments to pass to translate if necessary.
      * @param options More options. See https://ionicframework.com/docs/v3/api/components/alert/AlertController/
-     * @return Promise resolved if the user confirms and rejected with a canceled error if he cancels.
+     * @returns Promise resolved if the user confirms and rejected with a canceled error if he cancels.
      */
     showDeleteConfirm(
         translateMessage: string = 'core.areyousure',
@@ -1280,7 +1298,7 @@ export class CoreDomUtilsProvider {
      * @param okText Text of the OK button.
      * @param cancelText Text of the Cancel button.
      * @param options More options.
-     * @return Promise resolved if the user confirms and rejected with a canceled error if he cancels.
+     * @returns Promise resolved if the user confirms and rejected with a canceled error if he cancels.
      */
     showConfirm<T>(
         message: string,
@@ -1323,7 +1341,7 @@ export class CoreDomUtilsProvider {
      * @param error Message to show.
      * @param needsTranslate Whether the error needs to be translated.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     async showErrorModal(
         error: CoreError | CoreTextErrorObject | string,
@@ -1342,25 +1360,60 @@ export class CoreDomUtilsProvider {
             return null;
         }
 
-        const alertOptions: AlertOptions = {
-            message: message,
-        };
+        const alertOptions: AlertOptions = { message };
 
         if (this.isNetworkError(message, error)) {
             alertOptions.cssClass = 'core-alert-network-error';
-        } else if (typeof error !== 'string' && 'title' in error) {
+        }
+
+        if (typeof error !== 'string' && 'title' in error && error.title) {
             alertOptions.header = error.title || undefined;
+        } else if (message === Translate.instant('core.sitenotfoundhelp')) {
+            alertOptions.header = Translate.instant('core.sitenotfound');
+        } else if (this.isSiteUnavailableError(message)) {
+            alertOptions.header = CoreSites.isLoggedIn()
+                ? Translate.instant('core.connectionlost')
+                : Translate.instant('core.cannotconnect');
         } else {
             alertOptions.header = Translate.instant('core.error');
         }
 
         if (typeof error !== 'string' && 'buttons' in error && typeof error.buttons !== 'undefined') {
             alertOptions.buttons = error.buttons;
+        } else if (error instanceof CoreSiteError) {
+            if (error.errorDetails) {
+                alertOptions.message = `<p>${alertOptions.message}</p><div class="core-error-info-container"></div>`;
+            }
+
+            const supportConfig = error.supportConfig;
+
+            alertOptions.buttons = [Translate.instant('core.ok')];
+
+            if (supportConfig?.canContactSupport()) {
+                alertOptions.buttons.push({
+                    text: Translate.instant('core.contactsupport'),
+                    handler: () => CoreUserSupport.contact({
+                        supportConfig,
+                        subject: alertOptions.header,
+                        message: `${error.errorcode}\n\n${error.errorDetails}`,
+                    }),
+                });
+            }
         } else {
             alertOptions.buttons = [Translate.instant('core.ok')];
         }
 
-        return this.showAlertWithOptions(alertOptions, autocloseTime);
+        const alertElement = await this.showAlertWithOptions(alertOptions, autocloseTime);
+
+        if (error instanceof CoreSiteError && error.errorDetails) {
+            const containerElement = alertElement.querySelector('.core-error-info-container');
+
+            if (containerElement) {
+                containerElement.innerHTML = CoreErrorInfoComponent.render(error.errorDetails, error.errorcode);
+            }
+        }
+
+        return alertElement;
     }
 
     /**
@@ -1370,7 +1423,7 @@ export class CoreDomUtilsProvider {
      * @param defaultError Message to show if the error is not a string.
      * @param needsTranslate Whether the error needs to be translated.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     async showErrorModalDefault(
         error: CoreAnyError,
@@ -1403,7 +1456,7 @@ export class CoreDomUtilsProvider {
      * @param defaultError Message to show if the error is not a string.
      * @param needsTranslate Whether the error needs to be translated.
      * @param autocloseTime Number of milliseconds to wait to close the modal. If not defined, modal won't be closed.
-     * @return Promise resolved with the alert modal.
+     * @returns Promise resolved with the alert modal.
      */
     showErrorModalFirstWarning(
         warnings: CoreWSExternalWarning[],
@@ -1419,7 +1472,7 @@ export class CoreDomUtilsProvider {
      *
      * @param text The text of the modal window. Default: core.loading.
      * @param needsTranslate Whether the 'text' needs to be translated.
-     * @return Loading element instance.
+     * @returns Loading element instance.
      * @description
      * Usage:
      *     let modal = await domUtils.showModalLoading(myText);
@@ -1455,7 +1508,7 @@ export class CoreDomUtilsProvider {
      *
      * @param message The warning message.
      * @param link Link to the app to download if any.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async showDownloadAppNoticeModal(message: string, link?: string): Promise<void> {
         const buttons: AlertButton[] = [{
@@ -1477,7 +1530,7 @@ export class CoreDomUtilsProvider {
             buttons: buttons,
         });
 
-        const isDevice = CoreApp.isAndroid() || CoreApp.isIOS();
+        const isDevice = CorePlatform.isAndroid() || CorePlatform.isIOS();
         if (!isDevice) {
             // Treat all anchors so they don't override the app.
             const alertMessageEl: HTMLElement | null = alert.querySelector('.alert-message');
@@ -1495,8 +1548,8 @@ export class CoreDomUtilsProvider {
      * @param placeholderOrLabel Placeholder (for textual/numeric inputs) or label (for radio/checkbox). By default, "Password".
      * @param type Type of the input element. By default, password.
      * @param buttons Buttons. If not provided or it's an object with texts, OK and Cancel buttons will be displayed.
-     * @para options Other alert options.
-     * @return Promise resolved with the input data (true for checkbox/radio) if the user clicks OK, rejected if cancels.
+     * @param options Other alert options.
+     * @returns Promise resolved with the input data (true for checkbox/radio) if the user clicks OK, rejected if cancels.
      */
     showPrompt(
         message: string,
@@ -1553,14 +1606,18 @@ export class CoreDomUtilsProvider {
                 // Default buttons.
                 options.buttons = [
                     {
-                        text: buttons && 'cancelText' in buttons ? buttons.cancelText : Translate.instant('core.cancel'),
+                        text: buttons && 'cancelText' in buttons
+                            ? buttons.cancelText as string
+                            : Translate.instant('core.cancel'),
                         role: 'cancel',
                         handler: () => {
                             reject();
                         },
                     },
                     {
-                        text: buttons && 'okText' in buttons ? buttons.okText : Translate.instant('core.ok'),
+                        text: buttons && 'okText' in buttons
+                            ? buttons.okText as string
+                            : Translate.instant('core.ok'),
                         handler: resolvePromise,
                     },
                 ];
@@ -1577,7 +1634,7 @@ export class CoreDomUtilsProvider {
      * @param message Modal message.
      * @param buttons Buttons to pass to the modal.
      * @param placeholder Placeholder of the input element if any.
-     * @return Promise resolved with the entered text if any.
+     * @returns Promise resolved with the entered text if any.
      */
     async showTextareaPrompt(
         title: string,
@@ -1602,6 +1659,10 @@ export class CoreDomUtilsProvider {
 
         const result = await alert.onWillDismiss();
 
+        if (result.role === 'cancel') {
+            return;
+        }
+
         return result.data?.values?.['textarea-prompt'];
     }
 
@@ -1612,8 +1673,7 @@ export class CoreDomUtilsProvider {
      * @param needsTranslate Whether the 'text' needs to be translated.
      * @param duration Duration in ms of the dimissable toast.
      * @param cssClass Class to add to the toast.
-     * @param dismissOnPageChange Dismiss the Toast on page change.
-     * @return Toast instance.
+     * @returns Toast instance.
      */
     async showToast(
         text: string,
@@ -1637,7 +1697,7 @@ export class CoreDomUtilsProvider {
      * Show toast with some options.
      *
      * @param options Options.
-     * @return Promise resolved with Toast instance.
+     * @returns Promise resolved with Toast instance.
      */
     async showToastWithOptions(options: ShowToastOptions): Promise<HTMLIonToastElement> {
         // Convert some values and set default values.
@@ -1659,17 +1719,17 @@ export class CoreDomUtilsProvider {
      *
      * @param element The root element of the component/directive.
      * @param instance The instance to store.
-     * @deprecated since 4.0.0. Use CoreComponentsRegistry instead.
+     * @deprecated since 4.0.0. Use CoreDirectivesRegistry instead.
      */
     storeInstanceByElement(element: Element, instance: unknown): void {
-        CoreComponentsRegistry.register(element, instance);
+        CoreDirectivesRegistry.register(element, instance);
     }
 
     /**
      * Check if an element supports input via keyboard.
      *
      * @param el HTML element to check.
-     * @return Whether it supports input using keyboard.
+     * @returns Whether it supports input using keyboard.
      */
     supportsInputKeyboard(el: HTMLElement): boolean {
         return el &&
@@ -1682,7 +1742,7 @@ export class CoreDomUtilsProvider {
      * Converts HTML formatted text to DOM element(s).
      *
      * @param text HTML text.
-     * @return Same text converted to HTMLCollection.
+     * @returns Same text converted to HTMLCollection.
      */
     toDom(text: string): HTMLCollection {
         const element = this.convertToElement(text);
@@ -1720,6 +1780,7 @@ export class CoreDomUtilsProvider {
      * Opens a Modal.
      *
      * @param options Modal Options.
+     * @returns The modal data when the modal closes.
      */
     async openModal<T = unknown>(
         options: OpenModalOptions,
@@ -1769,6 +1830,7 @@ export class CoreDomUtilsProvider {
      * Opens a side Modal.
      *
      * @param options Modal Options.
+     * @returns The modal data when the modal closes.
      */
     async openSideModal<T = unknown>(
         options: OpenModalOptions,
@@ -1789,7 +1851,7 @@ export class CoreDomUtilsProvider {
      * Opens a popover.
      *
      * @param options Options.
-     * @return Promise resolved when the popover is dismissed or will be dismissed.
+     * @returns Promise resolved when the popover is dismissed or will be dismissed.
      */
     async openPopover<T = void>(options: OpenPopoverOptions): Promise<T | undefined> {
 
@@ -1852,7 +1914,7 @@ export class CoreDomUtilsProvider {
      * Wait for images to load.
      *
      * @param element The element to search in.
-     * @return Promise resolved with a boolean: whether there was any image to load.
+     * @returns Promise resolved with a boolean: whether there was any image to load.
      */
     async waitForImages(element: HTMLElement): Promise<boolean> {
         const imgs = Array.from(element.querySelectorAll('img'));
@@ -1925,9 +1987,10 @@ export class CoreDomUtilsProvider {
      * @param windowWidth Initial window width.
      * @param windowHeight Initial window height.
      * @param retries Number of retries done.
+     * @returns Promise resolved when done.
      */
     async waitForResizeDone(windowWidth?: number, windowHeight?: number, retries = 0): Promise<void> {
-        if (!CoreApp.isIOS()) {
+        if (!CorePlatform.isIOS()) {
             return; // Only wait in iOS.
         }
 
@@ -1949,7 +2012,7 @@ export class CoreDomUtilsProvider {
      * Check whether a CSS class indicating an app mode is set.
      *
      * @param className Class name.
-     * @return Whether the CSS class is set.
+     * @returns Whether the CSS class is set.
      */
     hasModeClass(className: string): boolean {
         return document.documentElement.classList.contains(className);
@@ -1958,7 +2021,7 @@ export class CoreDomUtilsProvider {
     /**
      * Get active mode CSS classes.
      *
-     * @return Mode classes.
+     * @returns Mode classes.
      */
     getModeClasses(): string[] {
         return Array.from(document.documentElement.classList);

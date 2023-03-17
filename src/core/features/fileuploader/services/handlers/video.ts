@@ -32,7 +32,7 @@ export class CoreFileUploaderVideoHandlerService implements CoreFileUploaderHand
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return Promise resolved with true if enabled.
+     * @returns Promise resolved with true if enabled.
      */
     async isEnabled(): Promise<boolean> {
         return CorePlatform.isMobile() || (CoreApp.canGetUserMedia() && CoreApp.canRecordMedia());
@@ -42,13 +42,13 @@ export class CoreFileUploaderVideoHandlerService implements CoreFileUploaderHand
      * Given a list of mimetypes, return the ones that are supported by the handler.
      *
      * @param mimetypes List of mimetypes.
-     * @return Supported mimetypes.
+     * @returns Supported mimetypes.
      */
     getSupportedMimetypes(mimetypes: string[]): string[] {
-        if (CoreApp.isIOS()) {
+        if (CorePlatform.isIOS()) {
             // In iOS it's recorded as MOV.
             return CoreUtils.filterByRegexp(mimetypes, /^video\/quicktime$/);
-        } else if (CoreApp.isAndroid()) {
+        } else if (CorePlatform.isAndroid()) {
             // In Android we don't know the format the video will be recorded, so accept any video mimetype.
             return CoreUtils.filterByRegexp(mimetypes, /^video\//);
         } else {
@@ -68,7 +68,7 @@ export class CoreFileUploaderVideoHandlerService implements CoreFileUploaderHand
     /**
      * Get the data to display the handler.
      *
-     * @return Data.
+     * @returns Data.
      */
     getData(): CoreFileUploaderHandlerData {
         return {

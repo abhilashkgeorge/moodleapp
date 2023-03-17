@@ -18,7 +18,7 @@ import { CoreDB } from '@services/db';
 import { CoreEvents } from '@singletons/events';
 import { SQLiteDB, SQLiteDBTableSchema } from '@classes/sqlitedb';
 
-import { makeSingleton, Keyboard, StatusBar, Device } from '@singletons';
+import { makeSingleton, Keyboard, StatusBar } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreColors } from '@singletons/colors';
 import { DBNAME, SCHEMA_VERSIONS_TABLE_NAME, SCHEMA_VERSIONS_TABLE_SCHEMA, SchemaVersionsDBEntry } from '@services/database/app';
@@ -64,10 +64,22 @@ export class CoreAppProvider {
     /**
      * Returns whether the user agent is controlled by automation. I.e. Behat testing.
      *
-     * @return True if the user agent is controlled by automation, false otherwise.
+     * @returns True if the user agent is controlled by automation, false otherwise.
      */
     static isAutomated(): boolean {
         return !!navigator.webdriver;
+    }
+
+    /**
+     * Returns the forced timezone to use. Timezone is forced for automated tests.
+     *
+     * @returns Timezone. Undefined to use the user's timezone.
+     */
+    static getForcedTimezone(): string | undefined {
+        if (CoreAppProvider.isAutomated()) {
+            // Use the same timezone forced for LMS in tests.
+            return 'Australia/Perth';
+        }
     }
 
     /**
@@ -93,7 +105,7 @@ export class CoreAppProvider {
     /**
      * Check if the browser supports mediaDevices.getUserMedia.
      *
-     * @return Whether the function is supported.
+     * @returns Whether the function is supported.
      */
     canGetUserMedia(): boolean {
         return !!(navigator && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
@@ -102,7 +114,7 @@ export class CoreAppProvider {
     /**
      * Check if the browser supports MediaRecorder.
      *
-     * @return Whether the function is supported.
+     * @returns Whether the function is supported.
      */
     canRecordMedia(): boolean {
         return !!window.MediaRecorder;
@@ -121,7 +133,7 @@ export class CoreAppProvider {
      * Install and upgrade a certain schema.
      *
      * @param schema The schema to create.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async createTablesFromSchema(schema: CoreAppSchema): Promise<void> {
         this.logger.debug(`Apply schema to app DB: ${schema.name}`);
@@ -137,6 +149,9 @@ export class CoreAppProvider {
 
         if (schema.tables) {
             await this.getDB().createTablesFromSchema(schema.tables);
+        }
+        if (schema.install && oldVersion === 0) {
+            await schema.install(this.getDB());
         }
         if (schema.migrate && oldVersion > 0) {
             await schema.migrate(this.getDB(), oldVersion);
@@ -158,7 +173,7 @@ export class CoreAppProvider {
     /**
      * Get the application global database.
      *
-     * @return App's DB.
+     * @returns App's DB.
      */
     getDB(): SQLiteDB {
         if (!this.db) {
@@ -171,7 +186,7 @@ export class CoreAppProvider {
     /**
      * Get an ID for a main menu.
      *
-     * @return Main menu ID.
+     * @returns Main menu ID.
      * @deprecated since 3.9.5. No longer supported.
      */
     getMainMenuId(): number {
@@ -182,14 +197,14 @@ export class CoreAppProvider {
      * Get app store URL.
      *
      * @param storesConfig Config params to send the user to the right place.
-     * @return Store URL.
+     * @returns Store URL.
      */
     getAppStoreUrl(storesConfig: CoreStoreConfig): string | undefined {
         if (this.isIOS() && storesConfig.ios) {
             return 'itms-apps://itunes.apple.com/app/' + storesConfig.ios;
         }
 
-        if (this.isAndroid() && storesConfig.android) {
+        if (CorePlatform.isAndroid() && storesConfig.android) {
             return 'market://details?id=' + storesConfig.android;
         }
 
@@ -202,19 +217,18 @@ export class CoreAppProvider {
 
     /**
      * Get platform major version number.
+     *
+     * @returns The platform major number.
+     * @deprecated since 4.1.1. Use CorePlatform.getPlatformMajorVersion instead.
      */
     getPlatformMajorVersion(): number {
-        if (!CorePlatform.isMobile()) {
-            return 0;
-        }
-
-        return Number(Device.version?.split('.')[0]);
+        return CorePlatform.getPlatformMajorVersion();
     }
 
     /**
      * Checks if the app is running in a 64 bits desktop environment (not browser).
      *
-     * @return false.
+     * @returns false.
      * @deprecated since 3.9.5 Desktop support has been removed.
      */
     is64Bits(): boolean {
@@ -224,16 +238,17 @@ export class CoreAppProvider {
     /**
      * Checks if the app is running in an Android mobile or tablet device.
      *
-     * @return Whether the app is running in an Android mobile or tablet device.
+     * @returns Whether the app is running in an Android mobile or tablet device.
+     * @deprecated since 4.1.1. Use CorePlatform.isAndroid instead.
      */
     isAndroid(): boolean {
-        return CorePlatform.isMobile() && CorePlatform.is('android');
+        return CorePlatform.isAndroid();
     }
 
     /**
      * Checks if the app is running in a desktop environment (not browser).
      *
-     * @return false.
+     * @returns false.
      * @deprecated since 3.9.5 Desktop support has been removed.
      */
     isDesktop(): boolean {
@@ -243,16 +258,17 @@ export class CoreAppProvider {
     /**
      * Checks if the app is running in an iOS mobile or tablet device.
      *
-     * @return Whether the app is running in an iOS mobile or tablet device.
+     * @returns Whether the app is running in an iOS mobile or tablet device.
+     * @deprecated since 4.1.1. Use CorePlatform.isIOS instead.
      */
     isIOS(): boolean {
-        return CorePlatform.isMobile() && !CorePlatform.is('android');
+        return CorePlatform.isIOS();
     }
 
     /**
      * Check if the keyboard is closing.
      *
-     * @return Whether keyboard is closing (animating).
+     * @returns Whether keyboard is closing (animating).
      */
     isKeyboardClosing(): boolean {
         return this.keyboardClosing;
@@ -261,7 +277,7 @@ export class CoreAppProvider {
     /**
      * Check if the keyboard is being opened.
      *
-     * @return Whether keyboard is opening (animating).
+     * @returns Whether keyboard is opening (animating).
      */
     isKeyboardOpening(): boolean {
         return this.keyboardOpening;
@@ -270,7 +286,7 @@ export class CoreAppProvider {
     /**
      * Check if the keyboard is visible.
      *
-     * @return Whether keyboard is visible.
+     * @returns Whether keyboard is visible.
      */
     isKeyboardVisible(): boolean {
         return this.isKeyboardShown;
@@ -279,7 +295,7 @@ export class CoreAppProvider {
     /**
      * Check if the app is running in a Linux environment.
      *
-     * @return false.
+     * @returns false.
      * @deprecated since 3.9.5 Desktop support has been removed.
      */
     isLinux(): boolean {
@@ -289,7 +305,7 @@ export class CoreAppProvider {
     /**
      * Check if the app is running in a Mac OS environment.
      *
-     * @return false.
+     * @returns false.
      * @deprecated since 3.9.5 Desktop support has been removed.
      */
     isMac(): boolean {
@@ -299,7 +315,7 @@ export class CoreAppProvider {
     /**
      * Check if the main menu is open.
      *
-     * @return Whether the main menu is open.
+     * @returns Whether the main menu is open.
      * @deprecated since 3.9.5. No longer supported.
      */
     isMainMenuOpen(): boolean {
@@ -309,7 +325,7 @@ export class CoreAppProvider {
     /**
      * Checks if the app is running in a mobile or tablet device (Cordova).
      *
-     * @return Whether the app is running in a mobile or tablet device.
+     * @returns Whether the app is running in a mobile or tablet device.
      * @deprecated since 4.1. use CorePlatform instead.
      */
     isMobile(): boolean {
@@ -319,7 +335,7 @@ export class CoreAppProvider {
     /**
      * Checks if the current window is wider than a mobile.
      *
-     * @return Whether the app the current window is wider than a mobile.
+     * @returns Whether the app the current window is wider than a mobile.
      */
     isWide(): boolean {
         return CorePlatform.width() > 768;
@@ -328,7 +344,7 @@ export class CoreAppProvider {
     /**
      * Returns whether we are online.
      *
-     * @return Whether the app is online.
+     * @returns Whether the app is online.
      * @deprecated since 4.1.0. Use CoreNetwork instead.
      */
     isOnline(): boolean {
@@ -338,7 +354,7 @@ export class CoreAppProvider {
     /**
      * Check if device uses a limited connection.
      *
-     * @return Whether the device uses a limited connection.
+     * @returns Whether the device uses a limited connection.
      * @deprecated since 4.1.0. Use CoreNetwork instead.
      */
     isNetworkAccessLimited(): boolean {
@@ -348,7 +364,7 @@ export class CoreAppProvider {
     /**
      * Check if device uses a wifi connection.
      *
-     * @return Whether the device uses a wifi connection.
+     * @returns Whether the device uses a wifi connection.
      * @deprecated since 4.1.0. Use CoreNetwork instead.
      */
     isWifi(): boolean {
@@ -358,7 +374,7 @@ export class CoreAppProvider {
     /**
      * Check if the app is running in a Windows environment.
      *
-     * @return false.
+     * @returns false.
      * @deprecated since 3.9.5 Desktop support has been removed.
      */
     isWindows(): boolean {
@@ -370,7 +386,7 @@ export class CoreAppProvider {
      */
     openKeyboard(): void {
         // Open keyboard is not supported in desktop and in iOS.
-        if (this.isAndroid()) {
+        if (CorePlatform.isAndroid()) {
             Keyboard.show();
         }
     }
@@ -453,7 +469,7 @@ export class CoreAppProvider {
     /**
      * Check if there's an ongoing SSO authentication process.
      *
-     * @return Whether there's a SSO authentication ongoing.
+     * @returns Whether there's a SSO authentication ongoing.
      */
     isSSOAuthenticationOngoing(): boolean {
         return !!this.ssoAuthenticationDeferred;
@@ -462,7 +478,7 @@ export class CoreAppProvider {
     /**
      * Returns a promise that will be resolved once SSO authentication finishes.
      *
-     * @return Promise resolved once SSO authentication finishes.
+     * @returns Promise resolved once SSO authentication finishes.
      */
     async waitForSSOAuthentication(): Promise<void> {
         await this.ssoAuthenticationDeferred;
@@ -529,7 +545,7 @@ export class CoreAppProvider {
     /**
      * Retrieve and forget redirect data.
      *
-     * @return Redirect data if any.
+     * @returns Redirect data if any.
      */
     consumeMemoryRedirect(): CoreRedirectData | null {
         const redirect = this.getRedirect();
@@ -557,7 +573,7 @@ export class CoreAppProvider {
     /**
      * Retrieve redirect data.
      *
-     * @return Redirect data if any.
+     * @returns Redirect data if any.
      */
     getRedirect(): CoreRedirectData | null {
         return this.redirect || null;
@@ -594,7 +610,7 @@ export class CoreAppProvider {
      *
      * @param callback Called when the back button is pressed.
      * @param priority Priority.
-     * @return A function that, when called, will unregister the back button action.
+     * @returns A function that, when called, will unregister the back button action.
      * @deprecated since 3.9.5
      */
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -662,7 +678,7 @@ export class CoreAppProvider {
             const entry = await this.schemaVersionsTable.getOneByPrimaryKey({ name: schema.name });
 
             return entry.version;
-        } catch (error) {
+        } catch {
             // No installed version yet.
             return 0;
         }
@@ -727,11 +743,21 @@ export type CoreAppSchema = {
     /**
      * Migrates the schema to the latest version.
      *
-     * Called when installing and upgrading the schema, after creating the defined tables.
+     * Called when upgrading the schema, after creating the defined tables.
      *
      * @param db The affected DB.
      * @param oldVersion Old version of the schema or 0 if not installed.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     migrate?(db: SQLiteDB, oldVersion: number): Promise<void>;
+
+    /**
+     * Make changes to install the schema.
+     *
+     * Called when installing the schema, after creating the defined tables.
+     *
+     * @param db Site database.
+     * @returns Promise resolved when done.
+     */
+    install?(db: SQLiteDB): Promise<void> | void;
 };

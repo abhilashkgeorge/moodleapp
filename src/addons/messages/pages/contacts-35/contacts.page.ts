@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { IonRefresher } from '@ionic/angular';
 import { CoreSites } from '@services/sites';
 import {
@@ -29,6 +29,7 @@ import { ActivatedRoute } from '@angular/router';
 import { Translate } from '@singletons';
 import { CoreScreen } from '@services/screen';
 import { CoreNavigator } from '@services/navigator';
+import { CoreSplitViewComponent } from '@components/split-view/split-view';
 
 /**
  * Page that displays the list of contacts.
@@ -39,6 +40,8 @@ import { CoreNavigator } from '@services/navigator';
     styleUrls: ['../../messages-common.scss'],
 })
 export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
+
+    @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
     protected searchingMessages: string;
     protected loadingMessages: string;
@@ -124,7 +127,7 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
      * Refresh the data.
      *
      * @param refresher Refresher.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async refreshData(refresher?: IonRefresher): Promise<void> {
         try {
@@ -144,7 +147,7 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
     /**
      * Fetch contacts.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchData(): Promise<void> {
         this.loadingMessage = this.loadingMessages;
@@ -169,7 +172,7 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
      * Sort user list by fullname
      *
      * @param list List to sort.
-     * @return Sorted list.
+     * @returns Sorted list.
      */
     protected sortUsers(list: AddonMessagesSearchContactsContact[]): AddonMessagesSearchContactsContact[] {
         return list.sort((a, b) => {
@@ -201,7 +204,7 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
      * Search users from the UI.
      *
      * @param query Text to search for.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     search(query: string): Promise<void> {
         CoreApp.closeKeyboard();
@@ -218,7 +221,7 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
      * Perform the search of users.
      *
      * @param query Text to search for.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     protected async performSearch(query: string): Promise<void> {
         try {
@@ -244,7 +247,9 @@ export class AddonMessagesContacts35Page implements OnInit, OnDestroy {
         const path = CoreNavigator.getRelativePathToParent('/messages/contacts-35') + `discussion/user/${discussionUserId}`;
 
         // @todo Check why this is failing on ngInit.
-        CoreNavigator.navigate(path);
+        CoreNavigator.navigate(path, {
+            reset: CoreScreen.isTablet && !!this.splitView && !this.splitView.isNested,
+        });
     }
 
     /**

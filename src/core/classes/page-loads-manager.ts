@@ -16,7 +16,7 @@ import { CoreRefreshButtonModalComponent } from '@components/refresh-button-moda
 import { CoreNavigator } from '@services/navigator';
 import { CoreDomUtils } from '@services/utils/dom';
 import { Subject } from 'rxjs';
-import { AsyncComponent } from './async-component';
+import { AsyncDirective } from './async-directive';
 import { PageLoadWatcher } from './page-load-watcher';
 
 /**
@@ -35,9 +35,9 @@ export class PageLoadsManager {
      *
      * @param page Page instance.
      * @param staleWhileRevalidate Whether to use stale while revalidate strategy.
-     * @return Load watcher to use.
+     * @returns Load watcher to use.
      */
-    startPageLoad(page: AsyncComponent, staleWhileRevalidate: boolean): PageLoadWatcher {
+    startPageLoad(page: AsyncDirective, staleWhileRevalidate: boolean): PageLoadWatcher {
         this.initialPath = this.initialPath ?? CoreNavigator.getCurrentPath();
         this.currentLoadWatcher = new PageLoadWatcher(this, staleWhileRevalidate);
         this.ongoingLoadWatchers.add(this.currentLoadWatcher);
@@ -51,9 +51,9 @@ export class PageLoadsManager {
      * Start a component load, adding it to currrent load watcher (if it exists) and watching the component.
      *
      * @param component Component instance.
-     * @return Load watcher to use.
+     * @returns Load watcher to use.
      */
-    startComponentLoad(component: AsyncComponent): PageLoadWatcher {
+    startComponentLoad(component: AsyncDirective): PageLoadWatcher {
         // If a component is loading data without the page loading data, probably the component is reloading/refreshing.
         // In that case, create a load watcher instance but don't store it in currentLoadWatcher because it's not a page load.
         const loadWatcher = this.currentLoadWatcher ?? new PageLoadWatcher(this, false);
@@ -103,7 +103,7 @@ export class PageLoadsManager {
      * Get an ongoing load watcher that supports updating in background and is not the one passed as a parameter.
      *
      * @param loadWatcher Load watcher to ignore.
-     * @return Ongoing load watcher, undefined if none found.
+     * @returns Ongoing load watcher, undefined if none found.
      */
     protected getAnotherOngoingUpdateInBackgroundWatcher(loadWatcher: PageLoadWatcher): PageLoadWatcher | undefined {
         for (const ongoingLoadWatcher of this.ongoingLoadWatchers) {

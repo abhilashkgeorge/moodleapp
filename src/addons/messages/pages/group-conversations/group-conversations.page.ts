@@ -38,6 +38,7 @@ import { CoreNavigator } from '@services/navigator';
 import { CoreScreen } from '@services/screen';
 import { CoreMainMenuDeepLinkManager } from '@features/mainmenu/classes/deep-link-manager';
 import { CorePlatform } from '@services/platform';
+import { CoreSplitViewComponent } from '@components/split-view/split-view';
 
 /**
  * Page that displays the list of conversations, including group conversations.
@@ -48,6 +49,8 @@ import { CorePlatform } from '@services/platform';
     styleUrls: ['../../messages-common.scss'],
 })
 export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
+
+    @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
     @ViewChild(IonContent) content?: IonContent;
     @ViewChild('favlist') favListEl?: ElementRef;
@@ -307,7 +310,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      * Fetch conversations.
      *
      * @param refreshUnreadCounts Whether to refresh unread counts.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchData(refreshUnreadCounts: boolean = true): Promise<void> {
         // Load the amount of conversations and contact requests.
@@ -359,7 +362,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
     /**
      * Fetch data for the expanded option.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchDataForExpandedOption(): Promise<void> {
         if (this.favourites.expanded === undefined) {
@@ -384,7 +387,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      * @param option The option to fetch data for.
      * @param loadingMore Whether we are loading more data or just the first ones.
      * @param getCounts Whether to get counts data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async fetchDataForOption(
         option: AddonMessagesGroupConversationOption,
@@ -444,7 +447,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
     /**
      * Fetch conversation counts.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async fetchConversationCounts(): Promise<void> {
         // Always try to get the latest data.
@@ -462,7 +465,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      * @param conversationId The conversation ID to search.
      * @param userId User ID to search (if no conversationId).
      * @param option The option to search in. If not defined, search in all options.
-     * @return Conversation.
+     * @returns Conversation.
      */
     protected findConversation(
         conversationId?: number,
@@ -488,7 +491,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
     /**
      * Get the option that is currently expanded, undefined if they are all collapsed.
      *
-     * @return Option currently expanded.
+     * @returns Option currently expanded.
      */
     protected getExpandedOption(): AddonMessagesGroupConversationOption | undefined {
         if (this.favourites.expanded) {
@@ -526,7 +529,10 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
         const path = CoreNavigator.getRelativePathToParent('/messages/group-conversations') + 'discussion/' +
             (conversationId ? conversationId : `user/${userId}`);
 
-        await CoreNavigator.navigate(path, { params });
+        await CoreNavigator.navigate(path, {
+            params,
+            reset: CoreScreen.isTablet && !!this.splitView && !this.splitView.isNested,
+        });
     }
 
     /**
@@ -541,7 +547,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      *
      * @param option The option to fetch data for.
      * @param infiniteComplete Infinite scroll complete function. Only used from core-infinite-loading.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async loadMoreConversations(option: AddonMessagesGroupConversationOption, infiniteComplete?: () => void): Promise<void> {
         try {
@@ -559,7 +565,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      *
      * @param option The option where the messages should be loaded.
      * @param messages Offline messages.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadOfflineMessages(
         option: AddonMessagesGroupConversationOption,
@@ -675,7 +681,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      * Given a conversation, return its option (favourites, group, individual).
      *
      * @param conversation Conversation to check.
-     * @return Option object.
+     * @returns Option object.
      */
     protected getConversationOption(
         conversation: AddonMessagesConversationForList | AddonMessagesNewMessagedEventData,
@@ -696,7 +702,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      *
      * @param refresher Refresher.
      * @param refreshUnreadCounts Whether to refresh unread counts.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async refreshData(refresher?: IonRefresher, refreshUnreadCounts: boolean = true): Promise<void> {
         // Don't invalidate conversations and so, they always try to get latest data.
@@ -736,7 +742,7 @@ export class AddonMessagesGroupConversationsPage implements OnInit, OnDestroy {
      *
      * @param option The option to expand.
      * @param getCounts Whether to get counts data.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async expandOption(option: AddonMessagesGroupConversationOption, getCounts = false): Promise<void> {
         // Collapse all and expand the right one.

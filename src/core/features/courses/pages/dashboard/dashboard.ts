@@ -71,7 +71,7 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
     /**
      * Convenience function to fetch the dashboard data.
      *
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async loadContent(): Promise<void> {
         const available = await CoreCoursesDashboard.isAvailable();
@@ -118,6 +118,8 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
                 visible: true,
             },
         ];
+
+        this.hasMainBlocks = CoreBlockDelegate.isBlockSupported('myoverview') || CoreBlockDelegate.isBlockSupported('timeline');
     }
 
     /**
@@ -152,7 +154,7 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
     }
 
     /**
-     * Component being destroyed.
+     * @inheritdoc
      */
     ngOnDestroy(): void {
         this.updateSiteObserver.off();

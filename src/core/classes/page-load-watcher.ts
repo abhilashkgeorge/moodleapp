@@ -15,7 +15,7 @@
 import { CoreSitesReadingStrategy } from '@services/sites';
 import { CoreUtils } from '@services/utils/utils';
 import { Subscription } from 'rxjs';
-import { AsyncComponent } from './async-component';
+import { AsyncDirective } from './async-directive';
 import { PageLoadsManager } from './page-loads-manager';
 import { CorePromisedValue } from './promised-value';
 import { WSObservable } from './site';
@@ -27,7 +27,7 @@ export class PageLoadWatcher {
 
     protected hasChanges = false;
     protected ongoingRequests = 0;
-    protected components = new Set<AsyncComponent>();
+    protected components = new Set<AsyncDirective>();
     protected loadedTimeout?: number;
     protected hasChangesPromises: Promise<boolean>[] = [];
 
@@ -39,7 +39,7 @@ export class PageLoadWatcher {
     /**
      * Whether this load watcher can update data in background.
      *
-     * @return Whether this load watcher can update data in background.
+     * @returns Whether this load watcher can update data in background.
      */
     canUpdateInBackground(): boolean {
         return this.updateInBackground;
@@ -48,7 +48,7 @@ export class PageLoadWatcher {
     /**
      * Whether this load watcher had meaningful changes received in background.
      *
-     * @return Whether this load watcher had meaningful changes received in background.
+     * @returns Whether this load watcher had meaningful changes received in background.
      */
     hasMeaningfulChanges(): boolean {
         return this.hasChanges;
@@ -66,7 +66,7 @@ export class PageLoadWatcher {
      *
      * @param component Component instance.
      */
-    async watchComponent(component: AsyncComponent): Promise<void> {
+    async watchComponent(component: AsyncDirective): Promise<void> {
         this.components.add(component);
         clearTimeout(this.loadedTimeout);
 
@@ -81,7 +81,7 @@ export class PageLoadWatcher {
     /**
      * Get the reading strategy to use.
      *
-     * @return Reading strategy to use.
+     * @returns Reading strategy to use.
      */
     getReadingStrategy(): CoreSitesReadingStrategy | undefined {
         return this.updateInBackground ? CoreSitesReadingStrategy.STALE_WHILE_REVALIDATE : undefined;
@@ -94,7 +94,7 @@ export class PageLoadWatcher {
      *
      * @param observable Observable of the request.
      * @param hasMeaningfulChanges Callback to check if there are meaningful changes if data was updated in background.
-     * @return First value of the observable.
+     * @returns First value of the observable.
      */
     watchRequest<T>(
         observable: WSObservable<T>,

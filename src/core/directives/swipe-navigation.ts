@@ -18,7 +18,6 @@ import { CoreSwipeNavigationTourComponent } from '@components/swipe-navigation-t
 import { CoreUserTours } from '@features/usertours/services/user-tours';
 import { Gesture, GestureDetail } from '@ionic/angular';
 import { CorePlatform } from '@services/platform';
-import { CoreScreen } from '@services/screen';
 import { GestureController } from '@singletons';
 
 const ACTIVATION_THRESHOLD = 150;
@@ -47,7 +46,7 @@ export class CoreSwipeNavigationDirective implements AfterViewInit, OnDestroy {
     }
 
     get enabled(): boolean {
-        return CoreScreen.isMobile && !!this.manager;
+        return !!this.manager;
     }
 
     /**
@@ -74,11 +73,8 @@ export class CoreSwipeNavigationDirective implements AfterViewInit, OnDestroy {
                 this.onRelease(ev);
             },
         });
-        this.swipeGesture.enable();
 
-        // Show user tour.
         const source = this.manager?.getSource();
-
         if (!source) {
             return;
         }
@@ -86,11 +82,13 @@ export class CoreSwipeNavigationDirective implements AfterViewInit, OnDestroy {
         await source.waitForLoaded();
 
         const items = source.getItems() ?? [];
-
         if (!this.enabled || items.length < 2) {
             return;
         }
 
+        this.swipeGesture.enable();
+
+        // Show user tour.
         await CoreUserTours.showIfPending({
             id: 'swipe-navigation',
             component: CoreSwipeNavigationTourComponent,
@@ -126,6 +124,8 @@ export class CoreSwipeNavigationDirective implements AfterViewInit, OnDestroy {
 
     /**
      * Check whether there is an item to the right of the current selection.
+     *
+     * @returns If has an item to the right.
      */
     protected async hasItemRight(): Promise<boolean> {
         if (!this.manager) {
@@ -139,6 +139,8 @@ export class CoreSwipeNavigationDirective implements AfterViewInit, OnDestroy {
 
     /**
      * Check whether there is an item to the left of the current selection.
+     *
+     * @returns If has an item to the left.
      */
     protected async hasItemLeft(): Promise<boolean> {
         if (!this.manager) {

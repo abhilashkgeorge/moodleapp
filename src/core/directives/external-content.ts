@@ -23,7 +23,6 @@ import {
     EventEmitter,
     OnDestroy,
 } from '@angular/core';
-import { CoreApp } from '@services/app';
 import { CoreFile } from '@services/file';
 import { CoreFilepool, CoreFilepoolFileActions, CoreFilepoolFileEventData } from '@services/filepool';
 import { CoreSites } from '@services/sites';
@@ -35,6 +34,11 @@ import { CoreSite } from '@classes/site';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreConstants } from '../constants';
 import { CoreNetwork } from '@services/network';
+import { Translate } from '@singletons';
+import { AsyncDirective } from '@classes/async-directive';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
+import { CorePromisedValue } from '@classes/promised-value';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Directive to handle external content.
@@ -49,7 +53,7 @@ import { CoreNetwork } from '@services/network';
 @Directive({
     selector: '[core-external-content]',
 })
-export class CoreExternalContentDirective implements AfterViewInit, OnChanges, OnDestroy {
+export class CoreExternalContentDirective implements AfterViewInit, OnChanges, OnDestroy, AsyncDirective {
 
     @Input() siteId?: string; // Site ID to use.
     @Input() component?: string; // Component to link the file to.
@@ -66,11 +70,14 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
     protected logger: CoreLogger;
     protected initialized = false;
     protected fileEventObserver?: CoreEventObserver;
+    protected onReadyPromise = new CorePromisedValue<void>();
 
     constructor(element: ElementRef) {
 
         this.element = element.nativeElement;
         this.logger = CoreLogger.getInstance('CoreExternalContentDirective');
+
+        CoreDirectivesRegistry.register(this.element, this);
     }
 
     /**
@@ -110,7 +117,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
         newSource.setAttribute('src', url);
 
         if (type) {
-            if (CoreApp.isAndroid() && type == 'video/quicktime') {
+            if (CorePlatform.isAndroid() && type == 'video/quicktime') {
                 // Fix for VideoJS/Chrome bug https://github.com/videojs/video.js/issues/423 .
                 newSource.setAttribute('type', 'video/mp4');
             } else {
@@ -156,15 +163,21 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
 
         } else {
             this.invalid = true;
+            this.onReadyPromise.resolve();
 
             return;
         }
 
         // Avoid handling data url's.
         if (url && url.indexOf('data:') === 0) {
-            this.invalid = true;
+            if (tagName === 'SOURCE') {
+                // Restoring original src.
+                this.addSource(url);
+            }
+
             this.onLoad.emit();
             this.loaded = true;
+            this.onReadyPromise.resolve();
 
             return;
         }
@@ -181,6 +194,8 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
                     this.loaded = true;
                 }
             }
+        } finally {
+            this.onReadyPromise.resolve();
         }
     }
 
@@ -190,7 +205,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
      * @param targetAttr Attribute to modify.
      * @param url Original URL to treat.
      * @param siteId Site ID.
-     * @return Promise resolved if the element is successfully treated.
+     * @returns Promise resolved if the element is successfully treated.
      */
     protected async handleExternalContent(targetAttr: string, url: string, siteId?: string): Promise<void> {
 
@@ -209,6 +224,9 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
             if (tagName === 'SOURCE') {
                 // Restoring original src.
                 this.addSource(url);
+            } else if (url && !this.element.getAttribute(targetAttr)) {
+                // By default, Angular inputs aren't added as DOM attributes. Add it now.
+                this.element.setAttribute(targetAttr, url);
             }
 
             throw new CoreError('Non-downloadable URL');
@@ -217,7 +235,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
         if (!site.canDownloadFiles() && isSiteFile) {
             this.element.parentElement?.removeChild(this.element); // Remove element since it'll be broken.
 
-            throw new CoreError('Site doesn\'t allow downloading files.');
+            throw new CoreError(Translate.instant('core.cannotdownloadfiles'));
         }
 
         const finalUrl = await this.getUrlToUse(targetAttr, url, site);
@@ -249,7 +267,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
      * Handle inline styles, trying to download referenced files.
      *
      * @param siteId Site ID.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async handleInlineStyles(siteId?: string): Promise<void> {
         if (!siteId) {
@@ -262,12 +280,10 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
             return;
         }
 
-        let urls = inlineStyles.match(/https?:\/\/[^"') ;]*/g);
-        if (!urls || !urls.length) {
+        const urls = CoreUtils.uniqueArray(Array.from(inlineStyles.match(/https?:\/\/[^"') ;]*/g) ?? []));
+        if (!urls.length) {
             return;
         }
-
-        urls = CoreUtils.uniqueArray(urls); // Remove duplicates.
 
         const promises = urls.map(async (url) => {
             const finalUrl = await CoreFilepool.getSrcByUrl(siteId, url, this.component, this.componentId, 0, true, true);
@@ -323,7 +339,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
      * @param targetAttr Attribute to modify.
      * @param url Original URL to treat.
      * @param site Site.
-     * @return Promise resolved with the URL.
+     * @returns Promise resolved with the URL.
      */
     protected async getUrlToUse(targetAttr: string, url: string, site: CoreSite): Promise<string> {
         const tagName = this.element.tagName;
@@ -378,7 +394,7 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
      * @param targetAttr Attribute to modify.
      * @param url Original URL to treat.
      * @param site Site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async setListeners(targetAttr: string, url: string, site: CoreSite): Promise<void> {
         if (this.fileEventObserver) {
@@ -456,6 +472,13 @@ export class CoreExternalContentDirective implements AfterViewInit, OnChanges, O
      */
     ngOnDestroy(): void {
         this.fileEventObserver?.off();
+    }
+
+    /**
+     * @inheritdoc
+     */
+    async ready(): Promise<void> {
+        return this.onReadyPromise;
     }
 
 }

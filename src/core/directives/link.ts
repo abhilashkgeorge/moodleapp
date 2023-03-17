@@ -57,12 +57,7 @@ export class CoreLinkDirective implements OnInit {
      * Function executed when the component is initialized.
      */
     ngOnInit(): void {
-        if (this.element.tagName != 'BUTTON' && this.element.tagName != 'A') {
-            this.element.setAttribute('tabindex', '0');
-            this.element.setAttribute('role', 'button');
-        }
-
-        CoreDom.onActivate(this.element, (event) => this.performAction(event));
+        CoreDom.initializeClickableElementA11y(this.element, (event) => this.performAction(event));
     }
 
     /**
@@ -111,7 +106,7 @@ export class CoreLinkDirective implements OnInit {
      *
      * @param href HREF to be opened.
      * @param openIn Open In App value coming from data-open-in attribute.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async navigate(href: string, openIn?: string | null): Promise<void> {
 
@@ -150,7 +145,7 @@ export class CoreLinkDirective implements OnInit {
      * Open a local file.
      *
      * @param path Path to the file.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async openLocalFile(path: string): Promise<void> {
         const filename = path.substring(path.lastIndexOf('/') + 1);
@@ -175,7 +170,7 @@ export class CoreLinkDirective implements OnInit {
      *
      * @param href HREF to be opened.
      * @param openIn Open In App value coming from data-open-in attribute.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     protected async openExternalLink(href: string, openIn?: string | null): Promise<void> {
         // Priority order is: core-link inApp attribute > forceOpenLinksIn setting > data-open-in HTML attribute.

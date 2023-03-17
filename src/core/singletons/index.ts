@@ -52,7 +52,6 @@ import { InAppBrowser as InAppBrowserService } from '@ionic-native/in-app-browse
 import { WebView as WebViewService } from '@ionic-native/ionic-webview/ngx';
 import { Keyboard as KeyboardService } from '@ionic-native/keyboard/ngx';
 import { LocalNotifications as LocalNotificationsService } from '@ionic-native/local-notifications/ngx';
-import { Media as MediaService } from '@ionic-native/media/ngx';
 import { MediaCapture as MediaCaptureService } from '@ionic-native/media-capture/ngx';
 import { Push as PushService } from '@ionic-native/push/ngx';
 import { QRScanner as QRScannerService } from '@ionic-native/qr-scanner/ngx';
@@ -75,6 +74,8 @@ const singletonsInjector = new CorePromisedValue<Injector>();
 
 /**
  * Helper to create a method that proxies calls to the underlying singleton instance.
+ *
+ * @returns Function.
  */
 // eslint-disable-next-line
 let createSingletonMethodProxy = (instance: any, method: Function, property: string | number | symbol) => method.bind(instance);
@@ -118,7 +119,7 @@ export function setCreateSingletonMethodProxy(method: typeof createSingletonMeth
  *
  * @param injectionToken Injection token used to resolve the service. This is usually the service class if the provider was
  * defined using a class or the string used in the `provide` key if it was defined using an object.
- * @return Singleton proxy.
+ * @returns Singleton proxy.
  */
 export function makeSingleton<Service extends object = object>( // eslint-disable-line @typescript-eslint/ban-types
     injectionToken: Type<Service> | AbstractType<Service> | Type<unknown> | string,
@@ -182,7 +183,6 @@ export const Geolocation = makeSingleton(GeolocationService);
 export const InAppBrowser = makeSingleton(InAppBrowserService);
 export const Keyboard = makeSingleton(KeyboardService);
 export const LocalNotifications = makeSingleton(LocalNotificationsService);
-export const Media = makeSingleton(MediaService);
 export const MediaCapture = makeSingleton(MediaCaptureService);
 export const NativeHttp = makeSingleton(HTTP);
 export const Push = makeSingleton(PushService);
@@ -217,7 +217,10 @@ export const Router = makeSingleton(RouterService);
 export const DomSanitizer = makeSingleton(DomSanitizerService);
 
 // Convert external libraries injectables.
-export const Translate = makeSingleton(TranslateService);
+export const Translate: Omit<CoreSingletonProxy<TranslateService>, 'instant'> & {
+    instant(keys: string[]): string[];
+    instant(key: string, interpolateParams?: Record<string, unknown>): string;
+} = makeSingleton(TranslateService);
 
 // Async singletons.
 export const AngularFrameworkDelegate = asyncInstance(async () => {

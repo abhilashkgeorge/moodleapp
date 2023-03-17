@@ -18,7 +18,6 @@ import { SQLiteDB } from '@classes/sqlitedb';
 import { SQLiteDBMock } from '@features/emulator/classes/sqlitedb';
 import { CoreBrowser } from '@singletons/browser';
 import { makeSingleton, SQLite } from '@singletons';
-import { CoreAppProvider } from './app';
 import { CorePlatform } from '@services/platform';
 
 const tableNameRegex = new RegExp([
@@ -47,7 +46,7 @@ export class CoreDbProvider {
      * @returns Whether queries should be logged.
      */
     loggingEnabled(): boolean {
-        return CoreBrowser.hasDevelopmentSetting('DBLoggingEnabled') || CoreAppProvider.isAutomated();
+        return CoreBrowser.hasDevelopmentSetting('DBLoggingEnabled');
     }
 
     /**
@@ -72,7 +71,7 @@ export class CoreDbProvider {
      * Get the table name from a SQL query.
      *
      * @param sql SQL query.
-     * @return Table name, undefined if not found.
+     * @returns Table name, undefined if not found.
      */
     protected getTableNameFromSql(sql: string): string | undefined {
         const matches = sql.match(tableNameRegex);
@@ -85,7 +84,7 @@ export class CoreDbProvider {
      *
      * @param value Value.
      * @param filter Filter.
-     * @return Whether the value matches the filter.
+     * @returns Whether the value matches the filter.
      */
     protected valueMatchesFilter(value: string, filter?: RegExp | string): boolean {
         if (typeof filter === 'string') {
@@ -101,7 +100,7 @@ export class CoreDbProvider {
      * Build an object with the summary data for each db, table and statement.
      *
      * @param filters Filters to limit the data stored.
-     * @return Object with the summary data.
+     * @returns Object with the summary data.
      */
     protected buildStatementsSummary(
         filters: TablesSummaryFilters = {},
@@ -205,7 +204,7 @@ export class CoreDbProvider {
      *
      * @param name DB name.
      * @param forceNew True if it should always create a new instance.
-     * @return DB.
+     * @returns DB.
      */
     getDB(name: string, forceNew?: boolean): SQLiteDB {
         if (this.dbInstances[name] === undefined || forceNew) {
@@ -223,7 +222,7 @@ export class CoreDbProvider {
      * Delete a DB.
      *
      * @param name DB name.
-     * @return Promise resolved when the DB is deleted.
+     * @returns Promise resolved when the DB is deleted.
      */
     async deleteDB(name: string): Promise<void> {
         if (this.dbInstances[name] !== undefined) {
