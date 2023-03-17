@@ -102,6 +102,7 @@ $core-login-loading-color: false !default;
 $core-login-loading-color-dark: $text-color-dark !default;
 $core-login-hide-forgot-password: false !default;
 $core-login-hide-need-help: false !default;
+$core-login-hide-qrcode: false !default;
 
 // Configuration options for more page. (deprecated on 4.0)
 $core-more-hide-siteinfo: false !default;
@@ -123,11 +124,17 @@ $activity-icon-colors: (
     interface: #a378ff
 ) !default;
 
+$calendar-event-category-category: #8e24aa !default;
+$calendar-event-category-course: $red !default;
+$calendar-event-category-group: $yellow !default;
+$calendar-event-category-user: $blue !default;
+$calendar-event-category-site: $green !default;
+
 // Calendar event category background colors.
 $calendar-event-category-colors: (
-    category: #8e24aa,
-    course: $red,
-    group: $yellow,
-    user: $blue,
-    site: $green
+    category: $calendar-event-category-category,
+    course: $calendar-event-category-course,
+    group: $calendar-event-category-group,
+    user: $calendar-event-category-user,
+    site: $calendar-event-category-site,
 ) !default;

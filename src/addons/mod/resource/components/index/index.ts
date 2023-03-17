@@ -19,14 +19,14 @@ import { CoreCourseModuleMainResourceComponent } from '@features/course/classes/
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
 import { CoreCourse } from '@features/course/services/course';
 import { CoreCourseModulePrefetchDelegate } from '@features/course/services/module-prefetch-delegate';
-import { CoreApp } from '@services/app';
+import { CoreNetwork } from '@services/network';
 import { CoreFileHelper } from '@services/file-helper';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreUtils, OpenFileAction } from '@services/utils/utils';
-import { Network, NgZone, Translate } from '@singletons';
+import { NgZone, Translate } from '@singletons';
 import { Subscription } from 'rxjs';
 import {
     AddonModResource,
@@ -34,6 +34,7 @@ import {
     AddonModResourceProvider,
 } from '../../services/resource';
 import { AddonModResourceHelper } from '../../services/resource-helper';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Component that displays a resource.
@@ -78,14 +79,14 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
     async ngOnInit(): Promise<void> {
         super.ngOnInit();
 
-        this.isIOS = CoreApp.isIOS();
-        this.isOnline = CoreApp.isOnline();
+        this.isIOS = CorePlatform.isIOS();
+        this.isOnline = CoreNetwork.isOnline();
 
         // Refresh online status when changes.
-        this.onlineObserver = Network.onChange().subscribe(() => {
+        this.onlineObserver = CoreNetwork.onChange().subscribe(() => {
             // Execute the callback in the Angular zone, so change detection doesn't stop working.
             NgZone.run(() => {
-                this.isOnline = CoreApp.isOnline();
+                this.isOnline = CoreNetwork.isOnline();
             });
         });
 
@@ -194,7 +195,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
      * Opens a file.
      *
      * @param iOSOpenFileAction Action to do in iOS.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async open(iOSOpenFileAction?: OpenFileAction): Promise<void> {
         let downloadable = await CoreCourseModulePrefetchDelegate.isModuleDownloadable(this.module, this.courseId);
@@ -220,7 +221,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
         }
 
         // The resource cannot be downloaded, open the activity in browser.
-        await CoreSites.getCurrentSite()?.openInBrowserWithAutoLoginIfSameSite(this.module.url || '');
+        await CoreSites.getCurrentSite()?.openInBrowserWithAutoLogin(this.module.url || '');
     }
 
     /**

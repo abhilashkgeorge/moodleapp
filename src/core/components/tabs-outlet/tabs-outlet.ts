@@ -31,7 +31,7 @@ import { CoreNavBarButtonsComponent } from '../navbar-buttons/navbar-buttons';
 import { StackEvent } from '@ionic/angular/directives/navigation/stack-utils';
 import { CoreNavigator } from '@services/navigator';
 import { CoreTabBase, CoreTabsBaseComponent } from '@classes/tabs';
-import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 
 /**
  * This component displays some top scrollable tabs that will autohide on vertical scroll.
@@ -43,8 +43,8 @@ import { CoreComponentsRegistry } from '@singletons/components-registry';
  *
  * Tab contents will only be shown if that tab is selected.
  *
- * @todo: Test RTL and tab history.
- * @todo: This should behave like the split-view in relation to routing (maybe we could reuse some code from
+ * @todo Test RTL and tab history.
+ * @todo This should behave like the split-view in relation to routing (maybe we could reuse some code from
  *  CorePageItemsListManager).
  */
 @Component({
@@ -188,11 +188,12 @@ export class CoreTabsOutletComponent extends CoreTabsBaseComponent<CoreTabsOutle
      * Load the tab.
      *
      * @param tabToSelect Tab to load.
-     * @return Promise resolved with true if tab is successfully loaded.
+     * @returns Promise resolved with true if tab is successfully loaded.
      */
     protected async loadTab(tabToSelect: CoreTabsOutletTab): Promise<boolean> {
         return CoreNavigator.navigate(tabToSelect.page, {
             params: tabToSelect.pageParams,
+            animated: false,
         });
     }
 
@@ -206,7 +207,7 @@ export class CoreTabsOutletComponent extends CoreTabsBaseComponent<CoreTabsOutle
     protected showHideNavBarButtons(activatedPageName: string): void {
         const elements = this.ionTabs.outlet.nativeEl.querySelectorAll('core-navbar-buttons');
         elements.forEach((element) => {
-            const instance = CoreComponentsRegistry.resolve(element, CoreNavBarButtonsComponent);
+            const instance = CoreDirectivesRegistry.resolve(element, CoreNavBarButtonsComponent);
 
             if (instance) {
                 const pagetagName = element.closest('.ion-page')?.tagName;

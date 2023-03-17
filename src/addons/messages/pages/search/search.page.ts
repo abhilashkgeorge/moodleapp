@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import { Component, OnDestroy } from '@angular/core';
+import { Component, OnDestroy, ViewChild } from '@angular/core';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { CoreSites } from '@services/sites';
 import {
@@ -24,8 +24,8 @@ import {
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreApp } from '@services/app';
 import { CoreNavigator } from '@services/navigator';
-import { Params } from '@angular/router';
 import { CoreScreen } from '@services/screen';
+import { CoreSplitViewComponent } from '@components/split-view/split-view';
 
 /**
  * Page for searching users.
@@ -35,6 +35,8 @@ import { CoreScreen } from '@services/screen';
     templateUrl: 'search.html',
 })
 export class AddonMessagesSearchPage implements OnDestroy {
+
+    @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
     disableSearch = false;
     displaySearching = false;
@@ -107,9 +109,9 @@ export class AddonMessagesSearchPage implements OnDestroy {
         this.displayResults = false;
 
         // Empty details.
-        const splitViewLoaded = CoreNavigator.isCurrentPathInTablet('**/messages/search/discussion');
-        if (splitViewLoaded) {
-            CoreNavigator.navigate('../');
+        const path = CoreNavigator.getRelativePathToParent('/messages/search');
+        if (path) {
+            CoreNavigator.navigate(path);
         }
     }
 
@@ -119,7 +121,7 @@ export class AddonMessagesSearchPage implements OnDestroy {
      * @param query Text to search for.
      * @param loadMore Load more contacts, noncontacts or messages. If undefined, start a new search.
      * @param infiniteComplete Infinite scroll complete function. Only used from core-infinite-loading.
-     * @return Resolved when done.
+     * @returns Resolved when done.
      */
     async search(query: string, loadMore?: 'contacts' | 'noncontacts' | 'messages', infiniteComplete?: () => void): Promise<void> {
         CoreApp.closeKeyboard();
@@ -250,16 +252,20 @@ export class AddonMessagesSearchPage implements OnDestroy {
         if (!onInit || CoreScreen.isTablet) {
             this.selectedResult = result;
 
-            const params: Params = {};
+            let conversationId: number | undefined;
+            let userId: number | undefined;
             if ('conversationid' in result) {
-                params.conversationId = result.conversationid;
+                conversationId = result.conversationid;
             } else {
-                params.userId = result.id;
+                userId = result.id;
             }
 
-            const splitViewLoaded = CoreNavigator.isCurrentPathInTablet('**/messages/search/discussion');
-            const path = (splitViewLoaded ? '../' : '') + 'discussion';
-            CoreNavigator.navigate(path, { params });
+            const path = CoreNavigator.getRelativePathToParent('/messages/search') + 'discussion/' +
+                (conversationId ? conversationId : `user/${userId}`);
+
+            CoreNavigator.navigate(path, {
+                reset: CoreScreen.isTablet && !!this.splitView && !this.splitView.isNested,
+            });
         }
     }
 

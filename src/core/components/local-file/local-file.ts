@@ -25,8 +25,8 @@ import { CoreTextUtils } from '@services/utils/text';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUtils, CoreUtilsOpenFileOptions, OpenFileAction } from '@services/utils/utils';
 import { CoreForms } from '@singletons/form';
-import { CoreApp } from '@services/app';
-import { CoreText } from '@singletons/text';
+import { CorePath } from '@singletons/path';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Component to handle a local file. Only files inside the app folder can be managed.
@@ -64,7 +64,7 @@ export class CoreLocalFileComponent implements OnInit {
     protected defaultIsOpenWithPicker = false;
 
     /**
-     * Component being initialized.
+     * @inheritdoc
      */
     async ngOnInit(): Promise<void> {
         this.manage = CoreUtils.isTrueOrOne(this.manage);
@@ -83,7 +83,7 @@ export class CoreLocalFileComponent implements OnInit {
 
         this.timemodified = CoreTimeUtils.userDate(metadata.modificationTime.getTime(), 'core.strftimedatetimeshort');
 
-        this.isIOS = CoreApp.isIOS();
+        this.isIOS = CorePlatform.isIOS();
         this.defaultIsOpenWithPicker = CoreFileHelper.defaultIsOpenWithPicker();
         this.openButtonIcon = this.defaultIsOpenWithPicker ? 'fas-file' : 'fas-share-square';
         this.openButtonLabel = this.defaultIsOpenWithPicker ? 'core.openfile' : 'core.openwith';
@@ -127,7 +127,7 @@ export class CoreLocalFileComponent implements OnInit {
 
         if (!CoreFileHelper.isOpenableInApp(this.file)) {
             try {
-                await CoreFileHelper.showConfirmOpenUnsupportedFile();
+                await CoreFileHelper.showConfirmOpenUnsupportedFile(false, this.file);
             } catch (error) {
                 return; // Cancelled, stop.
             }
@@ -183,7 +183,7 @@ export class CoreLocalFileComponent implements OnInit {
 
         const modal = await CoreDomUtils.showModalLoading();
         const fileAndDir = CoreFile.getFileAndDirectoryFromPath(this.relativePath);
-        const newPath = CoreText.concatenatePaths(fileAndDir.directory, newName);
+        const newPath = CorePath.concatenatePaths(fileAndDir.directory, newName);
 
         try {
             // Check if there's a file with this name.

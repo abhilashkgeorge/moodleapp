@@ -1,10 +1,11 @@
-<ion-card *ngIf="module.handlerData && module.visibleoncoursepage !== 0" [class.core-course-module-with-view]="moduleHasView">
+<ion-card *ngIf="module.handlerData && module.visibleoncoursepage !== 0" [class.core-course-module-with-view]="moduleHasView"
+    (click)="moduleClicked($event)" [button]="module.handlerData.action && module.uservisible"
+    [attr.aria-label]="module.handlerData.a11yTitle ? module.handlerData.a11yTitle : null">
     <ng-container *ngIf="!module.handlerData.loading">
-        <ion-item id="core-course-module-{{module.id}}" detail="false"
-            class="ion-text-wrap core-course-module-handler core-module-main-item {{module.handlerData.class}}"
-            (click)="moduleClicked($event)" [attr.aria-label]="module.handlerData.a11yTitle" [ngClass]="{
+        <ion-item id="core-course-module-{{module.id}}"
+            class="ion-text-wrap core-course-module-handler core-module-main-item {{module.handlerData.class}}" [ngClass]="{
                 'item-dimmed': module.visible === 0 || module.uservisible === false
-            }" [button]="module.handlerData.action && module.uservisible">
+            }">
 
             <core-mod-icon slot="start" *ngIf="module.handlerData.icon" [modicon]="module.handlerData.icon" [modname]="module.modname"
                 [componentId]="module.instance">
@@ -17,8 +18,8 @@
                     </core-format-text>
                     <ion-icon name="fas-lock" *ngIf="module.visible === 0 || module.uservisible === false"
                         [attr.aria-label]="'core.restricted' | translate"></ion-icon>
-                    <ion-icon [name]="prefetchStatusIcon" *ngIf="prefetchStatusIcon" color="success"
-                        [attr.aria-label]="prefetchStatusText | translate"></ion-icon>
+                    <ion-icon *ngIf="prefetchStatusIcon$ | async as prefetchStatusIcon" [name]="prefetchStatusIcon" color="success"
+                        [attr.aria-label]="((prefetchStatusText$ | async) || '') | translate"></ion-icon>
                 </p>
 
                 <div class="core-module-additional-info">
@@ -81,11 +82,9 @@
                     *ngIf="(showActivityDates && module.dates && module.dates.length) || module.availabilityinfo">
                     <!-- Activity dates. -->
                     <div *ngIf="showActivityDates && module.dates && module.dates.length" class="core-module-dates">
-                        <p *ngFor="let date of module.dates">
-                            <ion-icon name="fas-calendar" aria-hidden="true"></ion-icon><strong>{{ date.label }}</strong> {{ date.timestamp
-                            *
-                            1000 | coreFormatDate:'strftimedatetime' }}
-                        </p>
+                        <core-reminders-date *ngFor="let date of module.dates" [type]="date.id" [label]="date.label" [time]="date.timestamp"
+                            [relativeTo]="date.relativeto">
+                        </core-reminders-date>
                     </div>
 
                     <!-- Availability info -->

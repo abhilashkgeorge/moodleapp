@@ -21,7 +21,7 @@ import { CoreDatabaseCachingStrategy, CoreDatabaseTableProxy } from '@classes/da
 import { CoreApp } from '@services/app';
 import { CoreUtils } from '@services/utils/utils';
 import { AngularFrameworkDelegate, makeSingleton } from '@singletons';
-import { CoreComponentsRegistry } from '@singletons/components-registry';
+import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreDom } from '@singletons/dom';
 import { CoreSubscriptions } from '@singletons/subscriptions';
 import { CoreUserToursUserTourComponent } from '../components/user-tour/user-tour';
@@ -115,12 +115,15 @@ export class CoreUserToursService {
         await CoreUtils.wait(delay ?? 200);
 
         const container = document.querySelector('ion-app') ?? document.body;
+        const viewContainer = container.querySelector('ion-router-outlet, ion-nav, #ion-view-container-root');
         const element = await AngularFrameworkDelegate.attachViewToDom(
             container,
             CoreUserToursUserTourComponent,
             { ...componentOptions, container },
         );
-        const tour = CoreComponentsRegistry.require(element, CoreUserToursUserTourComponent);
+        const tour = CoreDirectivesRegistry.require(element, CoreUserToursUserTourComponent);
+
+        viewContainer?.setAttribute('aria-hidden', 'true');
 
         return this.startTour(tour, options.watch ?? (options as CoreUserToursFocusedOptions).focus);
     }
@@ -132,6 +135,15 @@ export class CoreUserToursService {
      */
     async dismiss(acknowledge: boolean = true): Promise<void> {
         await this.getForegroundTour()?.dismiss(acknowledge);
+
+        if (this.hasVisibleTour()) {
+            return;
+        }
+
+        const container = document.querySelector('ion-app') ?? document.body;
+        const viewContainer = container.querySelector('ion-router-outlet, ion-nav, #ion-view-container-root');
+
+        viewContainer?.removeAttribute('aria-hidden');
     }
 
     /**
@@ -235,16 +247,25 @@ export class CoreUserToursService {
     /**
      * Returns the first visible tour in the stack.
      *
-     * @return foreground tour if found or undefined.
+     * @returns foreground tour if found or undefined.
      */
     protected getForegroundTour(): CoreUserToursUserTourComponent | undefined {
         return this.tours.find(({ visible }) => visible)?.component;
     }
 
     /**
+     * Check whether any tour is visible.
+     *
+     * @returns Whether any tour is visible.
+     */
+    protected hasVisibleTour(): boolean {
+        return this.tours.some(({ visible }) => visible);
+    }
+
+    /**
      * Returns the tour index in the stack.
      *
-     * @return Tour index if found or -1 otherwise.
+     * @returns Tour index if found or -1 otherwise.
      */
     protected getTourIndex(tour: CoreUserToursUserTourComponent): number {
         return this.tours.findIndex(({ component }) => component === tour);
@@ -277,7 +298,7 @@ export class CoreUserToursService {
      * Is user Tour disabled?
      *
      * @param tourId Tour Id or undefined to check all user tours.
-     * @return Wether a particular or all user tours are disabled.
+     * @returns Wether a particular or all user tours are disabled.
      */
     isDisabled(tourId?: string): boolean {
         if (CoreConstants.CONFIG.disableUserTours) {

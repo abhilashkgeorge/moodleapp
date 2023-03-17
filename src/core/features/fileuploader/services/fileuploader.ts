@@ -15,10 +15,9 @@
 import { Injectable } from '@angular/core';
 import { CameraOptions } from '@ionic-native/camera/ngx';
 import { FileEntry } from '@ionic-native/file/ngx';
-import { MediaFile, CaptureError, CaptureAudioOptions, CaptureVideoOptions } from '@ionic-native/media-capture/ngx';
+import { MediaFile, CaptureError, CaptureVideoOptions } from '@ionic-native/media-capture/ngx';
 import { Subject } from 'rxjs';
 
-import { CoreApp } from '@services/app';
 import { CoreFile, CoreFileProvider } from '@services/file';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites } from '@services/sites';
@@ -26,13 +25,14 @@ import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTimeUtils } from '@services/utils/time';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreWSFile, CoreWSFileUploadOptions, CoreWSUploadFileResult } from '@services/ws';
-import { makeSingleton, Translate, MediaCapture, ModalController, Camera } from '@singletons';
+import { makeSingleton, Translate, MediaCapture, Camera } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
-import { CoreEmulatorCaptureMediaComponent } from '@features/emulator/components/capture-media/capture-media';
 import { CoreError } from '@classes/errors/error';
 import { CoreSite } from '@classes/site';
 import { CoreFileEntry, CoreFileHelper } from '@services/file-helper';
-import { CoreText } from '@singletons/text';
+import { CorePath } from '@singletons/path';
+import { CorePlatform } from '@services/platform';
+import { CoreModals } from '@services/modals';
 
 /**
  * File upload options.
@@ -68,7 +68,7 @@ export class CoreFileUploaderProvider {
      * Add a dot to the beginning of an extension.
      *
      * @param extension Extension.
-     * @return Treated extension.
+     * @returns Treated extension.
      */
     protected addDot(extension: string): string {
         return '.' + extension;
@@ -79,7 +79,7 @@ export class CoreFileUploaderProvider {
      *
      * @param a First file list.
      * @param b Second file list.
-     * @return Whether both lists are different.
+     * @returns Whether both lists are different.
      */
     areFileListDifferent(a: CoreFileEntry[], b: CoreFileEntry[]): boolean {
         a = a || [];
@@ -103,7 +103,7 @@ export class CoreFileUploaderProvider {
      * Check if a certain site allows deleting draft files.
      *
      * @param siteId Site Id. If not defined, use current site.
-     * @return Promise resolved with true if can delete.
+     * @returns Promise resolved with true if can delete.
      * @since 3.10
      */
     async canDeleteDraftFiles(siteId?: string): Promise<boolean> {
@@ -120,7 +120,7 @@ export class CoreFileUploaderProvider {
      * Check if a certain site allows deleting draft files.
      *
      * @param site Site. If not defined, use current site.
-     * @return Whether draft files can be deleted.
+     * @returns Whether draft files can be deleted.
      * @since 3.10
      */
     canDeleteDraftFilesInSite(site?: CoreSite): boolean {
@@ -132,14 +132,21 @@ export class CoreFileUploaderProvider {
     /**
      * Start the audio recorder application and return information about captured audio clip files.
      *
-     * @param options Options.
-     * @return Promise resolved with the result.
+     * @returns Promise resolved with the result.
      */
-    async captureAudio(options: CaptureAudioOptions): Promise<MediaFile[] | CaptureError> {
+    async captureAudio(): Promise<CoreFileUploaderAudioRecording[] | MediaFile[] | CaptureError> {
         this.onAudioCapture.next(true);
 
         try {
-            return await MediaCapture.captureAudio(options);
+            if (!CorePlatform.supportsMediaCapture() || !CorePlatform.supportsWebAssembly()) {
+                const media = await MediaCapture.captureAudio({ limit: 1 });
+
+                return media;
+            }
+
+            const recording = await this.captureAudioInApp();
+
+            return [recording];
         } finally {
             this.onAudioCapture.next(false);
         }
@@ -148,36 +155,26 @@ export class CoreFileUploaderProvider {
     /**
      * Record an audio file without using an external app.
      *
-     * @return Promise resolved with the file.
+     * @returns Promise resolved with the file.
      */
-    async captureAudioInApp(): Promise<MediaFile> {
-        const params = {
-            type: 'audio',
-        };
+    async captureAudioInApp(): Promise<CoreFileUploaderAudioRecording> {
+        const { CoreFileUploaderAudioRecorderComponent } =
+            await import('@features/fileuploader/components/audio-recorder/audio-recorder.module');
 
-        const modal = await ModalController.create({
-            component: CoreEmulatorCaptureMediaComponent,
-            cssClass: 'core-modal-fullscreen',
-            componentProps: params,
-            backdropDismiss: false,
-        });
+        const recording = await CoreModals.openSheet(CoreFileUploaderAudioRecorderComponent);
 
-        await modal.present();
-
-        const result = await modal.onWillDismiss();
-
-        if (result.role == 'success') {
-            return result.data[0];
-        } else {
-            throw result.data;
+        if (!recording) {
+            throw new Error('Recording missing from audio capture');
         }
+
+        return recording;
     }
 
     /**
      * Start the video recorder application and return information about captured video clip files.
      *
      * @param options Options.
-     * @return Promise resolved with the result.
+     * @returns Promise resolved with the result.
      */
     async captureVideo(options: CaptureVideoOptions): Promise<MediaFile[] | CaptureError> {
         this.onVideoCapture.next(true);
@@ -213,7 +210,7 @@ export class CoreFileUploaderProvider {
      * @param draftId Draft ID.
      * @param files Files to delete.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async deleteDraftFiles(draftId: number, files: { filepath: string; filename: string }[], siteId?: string): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -231,12 +228,12 @@ export class CoreFileUploaderProvider {
      *
      * @param uri File URI.
      * @param isFromAlbum True if the image was taken from album, false if it's a new image taken with camera.
-     * @return Options.
+     * @returns Options.
      */
     getCameraUploadOptions(uri: string, isFromAlbum?: boolean): CoreFileUploaderOptions {
         const extension = CoreMimetypeUtils.guessExtensionFromUrl(uri);
         const mimetype = CoreMimetypeUtils.getMimeType(extension);
-        const isIOS = CoreApp.isIOS();
+        const isIOS = CorePlatform.isIOS();
         const options: CoreFileUploaderOptions = {
             deleteAfterUpload: !isFromAlbum,
             mimeType: mimetype,
@@ -259,7 +256,7 @@ export class CoreFileUploaderProvider {
             // If the file was picked from the album, delete it only if it was copied to the app's folder.
             options.deleteAfterUpload = CoreFile.isFileInAppFolder(uri);
 
-            if (CoreApp.isAndroid()) {
+            if (CorePlatform.isAndroid()) {
                 // Picking an image from album in Android adds a timestamp at the end of the file. Delete it.
                 options.fileName = options.fileName.replace(/(\.[^.]*)\?[^.]*$/, '$1');
             }
@@ -273,7 +270,7 @@ export class CoreFileUploaderProvider {
      *
      * @param originalFiles Original files.
      * @param currentFiles Current files.
-     * @return List of files to delete.
+     * @returns List of files to delete.
      */
     getFilesToDelete(
         originalFiles: CoreWSFile[],
@@ -307,7 +304,7 @@ export class CoreFileUploaderProvider {
      * @param deleteAfterUpload Whether the file should be deleted after upload.
      * @param fileArea File area to upload the file to. It defaults to 'draft'.
      * @param itemId Draft ID to upload the file to, 0 to create new.
-     * @return Options.
+     * @returns Options.
      */
     getFileUploadOptions(
         uri: string,
@@ -333,9 +330,9 @@ export class CoreFileUploaderProvider {
      * Get the upload options for a file taken with the media capture Cordova plugin.
      *
      * @param mediaFile File object to upload.
-     * @return Options.
+     * @returns Options.
      */
-    getMediaUploadOptions(mediaFile: MediaFile): CoreFileUploaderOptions {
+    getMediaUploadOptions(mediaFile: MediaFile | CoreFileUploaderAudioRecording): CoreFileUploaderOptions {
         const options: CoreFileUploaderOptions = {};
         let filename = mediaFile.name;
 
@@ -363,7 +360,7 @@ export class CoreFileUploaderProvider {
      * Take a picture or video, or load one from the library.
      *
      * @param options Options.
-     * @return Promise resolved with the result.
+     * @returns Promise resolved with the result.
      */
     getPicture(options: CameraOptions): Promise<string> {
         this.onGetPicture.next(true);
@@ -377,7 +374,7 @@ export class CoreFileUploaderProvider {
      * Get the files stored in a folder, marking them as offline.
      *
      * @param folderPath Folder where to get the files.
-     * @return Promise resolved with the list of files.
+     * @returns Promise resolved with the list of files.
      */
     async getStoredFiles(folderPath: string): Promise<FileEntry[]> {
         return <FileEntry[]> await CoreFile.getDirectoryContents(folderPath);
@@ -388,7 +385,7 @@ export class CoreFileUploaderProvider {
      *
      * @param filesObject The combined offline and online files object.
      * @param folderPath Folder path to get files from.
-     * @return Promise resolved with files.
+     * @returns Promise resolved with files.
      */
     async getStoredFilesFromOfflineFilesObject(
         filesObject: CoreFileUploaderStoreFilesResult,
@@ -418,7 +415,7 @@ export class CoreFileUploaderProvider {
      * @param mimetypes List of supported mimetypes. If undefined, all mimetypes supported.
      * @param path File's path or name.
      * @param mimetype File's mimetype.
-     * @return Undefined if file is valid, error message if file is invalid.
+     * @returns Undefined if file is valid, error message if file is invalid.
      */
     isInvalidMimetype(mimetypes?: string[], path?: string, mimetype?: string): string | undefined {
         let extension: string | undefined;
@@ -452,7 +449,7 @@ export class CoreFileUploaderProvider {
      * Mark files as offline.
      *
      * @param files Files to mark as offline.
-     * @return Files marked as offline.
+     * @returns Files marked as offline.
      * @deprecated since 3.9.5. Now stored files no longer have an offline property.
      */
     markOfflineFiles(files: FileEntry[]): FileEntry[] {
@@ -463,7 +460,7 @@ export class CoreFileUploaderProvider {
      * Parse filetypeList to get the list of allowed mimetypes and the data to render information.
      *
      * @param filetypeList Formatted string list where the mimetypes can be checked.
-     * @return Mimetypes and the filetypes informations. Undefined if all types supported.
+     * @returns Mimetypes and the filetypes informations. Undefined if all types supported.
      */
     prepareFiletypeList(filetypeList: string): CoreFileUploaderTypeList | undefined {
         filetypeList = filetypeList?.trim();
@@ -548,7 +545,7 @@ export class CoreFileUploaderProvider {
      *
      * @param folderPath Path of the folder where to store the files.
      * @param files List of files.
-     * @return Promise resolved if success.
+     * @returns Promise resolved if success.
      */
     async storeFilesToUpload(
         folderPath: string,
@@ -579,7 +576,7 @@ export class CoreFileUploaderProvider {
             } else {
                 // Local file, copy it.
                 // Use copy instead of move to prevent having a unstable state if some copies succeed and others don't.
-                const destFile = CoreText.concatenatePaths(folderPath, file.name);
+                const destFile = CorePath.concatenatePaths(folderPath, file.name);
                 result.offline++;
 
                 await CoreFile.copyFile(file.toURL(), destFile);
@@ -596,7 +593,7 @@ export class CoreFileUploaderProvider {
      * @param options Options for the upload.
      * @param onProgress Function to call on progress.
      * @param siteId Id of the site to upload the file to. If not defined, use current site.
-     * @return Promise resolved when done.
+     * @returns Promise resolved when done.
      */
     async uploadFile(
         uri: string,
@@ -629,7 +626,7 @@ export class CoreFileUploaderProvider {
      * @param itemId Draft ID.
      * @param files List of files.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId.
+     * @returns Promise resolved with the itemId.
      */
     async uploadFiles(itemId: number, files: CoreFileEntry[], siteId?: string): Promise<void> {
         siteId = siteId || CoreSites.getCurrentSiteId();
@@ -673,7 +670,7 @@ export class CoreFileUploaderProvider {
      * @param component The component to set to the downloaded files.
      * @param componentId An ID to use in conjunction with the component.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId.
+     * @returns Promise resolved with the itemId.
      */
     async uploadOrReuploadFile(
         file: CoreFileEntry,
@@ -733,7 +730,7 @@ export class CoreFileUploaderProvider {
      * @param component The component to set to the downloaded files.
      * @param componentId An ID to use in conjunction with the component.
      * @param siteId Site ID. If not defined, current site.
-     * @return Promise resolved with the itemId.
+     * @returns Promise resolved with the itemId.
      */
     async uploadOrReuploadFiles(
         files: CoreFileEntry[],
@@ -780,4 +777,10 @@ export type CoreFileUploaderTypeList = {
 export type CoreFileUploaderTypeListInfoEntry = {
     name?: string;
     extlist: string;
+};
+
+export type CoreFileUploaderAudioRecording = {
+    name: string;
+    fullPath: string;
+    type: string;
 };

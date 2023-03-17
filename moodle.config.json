@@ -1,8 +1,8 @@
 {
     "app_id": "com.moodle.moodlemobile",
     "appname": "Moodle Mobile",
-    "versioncode": 40200,
-    "versionname": "4.0.2",
+    "versioncode": 41100,
+    "versionname": "4.1.1",
     "cache_update_frequency_usually": 420000,
     "cache_update_frequency_often": 1200000,
     "cache_update_frequency_sometimes": 3600000,
@@ -11,6 +11,7 @@
     "languages": {
         "af": "Afrikaans",
         "ar": "عربي",
+        "az": "Azərbaycanca",
         "bg": "Български",
         "ca": "Català",
         "cs": "Čeština",
@@ -52,6 +53,7 @@
         "ro": "Română",
         "ru": "Русский",
         "sl": "Slovenščina",
+        "sq": "Shqip",
         "sr-cr": "Српски",
         "sr-lt": "Srpski",
         "sv": "Svenska",
@@ -76,9 +78,10 @@
             "password": "moodle"
         }
     },
+    "defaultZoomLevel": "none",
     "zoomlevels": {
-        "normal": 100,
-        "low": 110,
+        "none": 100,
+        "medium": 110,
         "high": 120
     },
     "customurlscheme": "moodlemobile",
@@ -102,5 +105,11 @@
     },
     "wsrequestqueuelimit": 10,
     "wsrequestqueuedelay": 100,
-    "calendarreminderdefaultvalue": 3600
+    "calendarreminderdefaultvalue": 3600,
+    "toastDurations": {
+        "short": 2000,
+        "long": 3500,
+        "sticky": 0
+    },
+    "disableTokenFile": false
 }

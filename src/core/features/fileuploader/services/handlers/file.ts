@@ -14,12 +14,12 @@
 
 import { Injectable } from '@angular/core';
 
-import { CoreApp } from '@services/app';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreFileUploaderHandler, CoreFileUploaderHandlerData, CoreFileUploaderHandlerResult } from '../fileuploader-delegate';
 import { CoreFileUploaderHelper } from '../fileuploader-helper';
 import { CoreFileUploader } from '../fileuploader';
 import { makeSingleton, Translate } from '@singletons';
+import { CorePlatform } from '@services/platform';
 
 /**
  * Handler to upload any type of file.
@@ -33,7 +33,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
     /**
      * Whether or not the handler is enabled on a site level.
      *
-     * @return Promise resolved with true if enabled.
+     * @returns Promise resolved with true if enabled.
      */
     async isEnabled(): Promise<boolean> {
         return true;
@@ -43,7 +43,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
      * Given a list of mimetypes, return the ones that are supported by the handler.
      *
      * @param mimetypes List of mimetypes.
-     * @return Supported mimetypes.
+     * @returns Supported mimetypes.
      */
     getSupportedMimetypes(mimetypes: string[]): string[] {
         return mimetypes;
@@ -52,7 +52,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
     /**
      * Get the data to display the handler.
      *
-     * @return Data.
+     * @returns Data.
      */
     getData(): CoreFileUploaderHandlerData {
         const handler: CoreFileUploaderHandlerData = {
@@ -61,7 +61,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
             icon: 'folder', // Cannot use font-awesome in action sheet.
         };
 
-        if (CoreApp.isMobile()) {
+        if (CorePlatform.isMobile()) {
             handler.action = async (
                 maxSize?: number,
                 upload?: boolean,
@@ -93,7 +93,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
                 const input = document.createElement('input');
                 input.setAttribute('type', 'file');
                 input.classList.add('core-fileuploader-file-handler-input');
-                if (mimetypes && mimetypes.length && (!CoreApp.isAndroid() || mimetypes.length == 1)) {
+                if (mimetypes && mimetypes.length && (!CorePlatform.isAndroid() || mimetypes.length == 1)) {
                     // Don't use accept attribute in Android with several mimetypes, it's not supported.
                     input.setAttribute('accept', mimetypes.join(', '));
                 }
@@ -133,7 +133,7 @@ export class CoreFileUploaderFileHandlerService implements CoreFileUploaderHandl
                     }
                 });
 
-                if (CoreApp.isIOS()) {
+                if (CorePlatform.isIOS()) {
                     // In iOS, the click on the input stopped working for some reason. We need to put it 1 level higher.
                     element.parentElement?.appendChild(input);
 

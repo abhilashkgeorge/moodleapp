@@ -14,37 +14,112 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-const { existsSync, readFileSync, writeFileSync } = require('fs');
+const minimatch = require('minimatch');
+const { existsSync, readFileSync, writeFileSync, statSync, renameSync, rmSync } = require('fs');
 const { readdir } = require('fs').promises;
 const { mkdirSync, copySync } = require('fs-extra');
-const { resolve } = require('path');
+const { resolve, extname, dirname, basename, relative } = require('path');
 
 async function main() {
     const pluginPath = process.argv[2] || guessPluginPath() || fail('Folder argument missing!');
+    const excludeFeatures = process.argv.some(arg => arg === '--exclude-features');
+    const exclusions = excludeFeatures
+        ? [
+            '*.feature',
+            '**/js/mobile/index.js',
+            '**/db/mobile.php',
+            '**/classes/output/mobile.php',
+        ]
+        : [];
 
     if (!existsSync(pluginPath)) {
         mkdirSync(pluginPath);
+    } else {
+        // Empty directory, except the excluding list.
+        const excludeFromErase = [
+            ...exclusions,
+            '.git',
+            '.gitignore',
+            'README.md',
+        ];
+
+        const files = await readdir(pluginPath, { withFileTypes: true });
+        for (const file of files) {
+            if (isExcluded(file.name, excludeFromErase)) {
+                continue;
+            }
+
+            const path = resolve(pluginPath, file.name);
+            rmSync(`${path}`, {recursive: true});
+        }
     }
 
     // Copy plugin template.
     const { version: appVersion } = require(projectPath('package.json'));
-    const templatePath = projectPath('scripts/templates/behat-plugin');
+    const templatePath = projectPath('local_moodleappbehat');
+
+    for await (const file of getDirectoryFiles(templatePath)) {
+        if (isExcluded(file, exclusions)) {
+            continue;
+        }
+
+        copySync(file, file.replace(templatePath, pluginPath));
+    }
+
+    // Update version.php
+    const pluginFilePath = pluginPath + '/version.php';
+    const fileContents = readFileSync(pluginFilePath).toString();
+
     const replacements = {
         appVersion,
         pluginVersion: getMoodlePluginVersion(),
     };
+    writeFileSync(pluginFilePath, replaceArguments(fileContents, replacements));
 
-    copySync(templatePath, pluginPath);
+    // Copy feature and snapshot files.
+    if (!excludeFeatures) {
+        const behatTempFeaturesPath = `${pluginPath}/behat-tmp`;
+        copySync(projectPath('src'), behatTempFeaturesPath, { filter: shouldCopyFileOrDirectory });
 
-    for await (const templateFilePath of getDirectoryFiles(templatePath)) {
-        const pluginFilePath = pluginPath + templateFilePath.substr(templatePath.length);
-        const fileContents = readFileSync(pluginFilePath).toString();
+        const behatFeaturesPath = `${pluginPath}/tests/behat`;
+        if (!existsSync(behatFeaturesPath)) {
+            mkdirSync(behatFeaturesPath, {recursive: true});
+        }
 
-        writeFileSync(pluginFilePath, replaceArguments(fileContents, replacements));
+        for await (const file of getDirectoryFiles(behatTempFeaturesPath)) {
+            const filePath = dirname(file);
+
+            if (filePath.endsWith('/tests/behat/snapshots')) {
+                renameSync(file, behatFeaturesPath + '/snapshots/' + basename(file));
+
+                continue;
+            }
+
+            if (!filePath.endsWith('/tests/behat')) {
+                continue;
+            }
+
+            const newPath = filePath.substring(0, filePath.length - ('/tests/behat'.length));
+            const searchRegExp = /\//g;
+            const prefix = relative(behatTempFeaturesPath, newPath).replace(searchRegExp,'-') || 'core';
+            const featureFilename = prefix + '-' + basename(file);
+            renameSync(file, behatFeaturesPath + '/' + featureFilename);
+        }
+
+        rmSync(behatTempFeaturesPath, {recursive: true});
     }
+}
 
-    // Copy features.
-    copySync(projectPath('tests/behat'), `${pluginPath}/tests/behat`);
+function shouldCopyFileOrDirectory(path) {
+    const stats = statSync(path);
+
+    return stats.isDirectory()
+        || extname(path) === '.feature'
+        || extname(path) === '.png';
+}
+
+function isExcluded(file, exclusions) {
+    return exclusions.some(exclusion => minimatch(file, exclusion));
 }
 
 function fail(message) {
