@@ -103,18 +103,11 @@ export class CoreCoursesMyCoursesPage implements OnInit, OnDestroy, AsyncDirecti
 
         if (available && !disabled) {
             try {
-<<<<<<< HEAD
-                const blocks = await CoreCoursesDashboard.getDashboardBlocks(
-                    undefined,
-                    undefined,
-                    supportsMyParam ? this.myPageCourses : undefined,
-=======
                 const blocks = await loadWatcher.watchRequest(
                     CoreCoursesDashboard.getDashboardBlocksObservable({
                         myPage: supportsMyParam ? this.myPageCourses : undefined,
                         readingStrategy: loadWatcher.getReadingStrategy(),
                     }),
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
                 );
 
                 // My overview block should always be in main blocks, but check side blocks too just in case.

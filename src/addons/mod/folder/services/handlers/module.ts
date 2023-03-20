@@ -68,11 +68,7 @@ export class AddonModFolderModuleHandlerService extends CoreModuleHandlerBase im
             module.description = descriptionElement.innerHTML;
         }
 
-<<<<<<< HEAD
-        // @todo: Temporary fix to open inline folders. We should use a more generic solution.
-=======
         // @todo Temporary fix to open inline folders. We should use a more generic solution.
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
         data.action = async (event, module, courseId, options): Promise<void> => {
             options = options || {};
             options.params = options.params || {};

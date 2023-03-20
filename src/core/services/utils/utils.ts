@@ -33,15 +33,11 @@ import { CoreFileEntry } from '@services/file-helper';
 import { CoreConstants } from '@/core/constants';
 import { CoreWindow } from '@singletons/window';
 import { CoreColors } from '@singletons/colors';
-<<<<<<< HEAD
-import { CoreError } from '@classes/errors/error';
-=======
 import { CorePromisedValue } from '@classes/promised-value';
 import { CorePlatform } from '@services/platform';
 import { CoreErrorWithOptions } from '@classes/errors/errorwithtitle';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites } from '@services/sites';
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
 
 export type TreeNode<T> = T & { children: TreeNode<T>[] };
 
@@ -1003,10 +999,6 @@ export class CoreUtilsProvider {
             this.openInApp(path);
 
             return;
-<<<<<<< HEAD
-        } else if (extension === 'apk' && CoreApp.isAndroid()) {
-            throw new CoreError(Translate.instant('core.cannotinstallapk'));
-=======
         } else if (extension === 'apk' && CorePlatform.isAndroid()) {
             const url = await CoreUtils.ignoreErrors(
                 CoreFilepool.getFileUrlByPath(CoreSites.getCurrentSiteId(), CoreFile.removeBasePath(path)),
@@ -1030,7 +1022,6 @@ export class CoreUtilsProvider {
                     ]
                     : undefined,
             );
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
         }
 
         // Path needs to be decoded, the file won't be opened if the path has %20 instead of spaces and so.

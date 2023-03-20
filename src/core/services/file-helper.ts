@@ -27,14 +27,10 @@ import { CoreConstants } from '@/core/constants';
 import { CoreError } from '@classes/errors/error';
 import { makeSingleton, Translate } from '@singletons';
 import { CoreNetworkError } from '@classes/errors/network-error';
-<<<<<<< HEAD
-import { CoreMimetypeUtils } from './utils/mimetype';
-=======
 import { CoreConfig } from './config';
 import { CoreCanceledError } from '@classes/errors/cancelederror';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CorePlatform } from './platform';
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
 
 /**
  * Provider to provide some helper functions regarding files and packages.
@@ -324,16 +320,10 @@ export class CoreFileHelperProvider {
         }
 
         const mimetype = file.mimetype;
-<<<<<<< HEAD
-        if (!('isexternalfile' in file) || !file.isexternalfile) {
-            return mimetype === 'application/vnd.android.package-archive' ||
-                CoreMimetypeUtils.getFileExtension(file.filename ?? '') === 'apk';
-=======
 
         if (!('isexternalfile' in file) || !file.isexternalfile) {
             return mimetype === 'application/vnd.android.package-archive'
                 || CoreMimetypeUtils.getFileExtension(file.filename ?? '') === 'apk';
->>>>>>> 15fafef5f02ad1362aa57e77004c08741d285537
         }
 
         if (mimetype.indexOf('application/vnd.google-apps.') != -1) {
