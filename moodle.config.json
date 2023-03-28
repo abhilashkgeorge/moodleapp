@@ -71,9 +71,9 @@
         "medium": 110,
         "high": 120
     },
-    "customurlscheme": "goscore",
-    "siteurl": "https://class.goscoreweb.com",
-    "sitename": "goscore",
+    "customurlscheme": "eduskills",
+    "siteurl": "https://app.eduskills.org.in",
+    "sitename": "EduSkills",
     "multisitesdisplay": "",
     "sitefindersettings": {},
     "onlyallowlistedsites": false,
@@ -87,7 +87,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.goscore.goscore",
+        "android": "com.abhilashkgeorge.eduskills",
         "ios": "id633359593"
     },
     "wsrequestqueuelimit": 10,
