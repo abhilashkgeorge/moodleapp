@@ -1,42 +1,43 @@
 {
   "project_info": {
-    "project_number": "",
-    "firebase_url": "",
-    "project_id": "",
-    "storage_bucket": ""
+    "project_number": "305314197999",
+    "project_id": "eduskills-370dd",
+    "storage_bucket": "eduskills-370dd.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:111111111111:android:1111111111111111",
+        "mobilesdk_app_id": "1:305314197999:android:c3e20decd8705b143fc61a",
         "android_client_info": {
-          "package_name": "com.moodle.moodlemobile"
+          "package_name": "com.abhilashkgeorge.eduskills"
         }
       },
       "oauth_client": [
         {
-          "client_id": "",
+          "client_id": "305314197999-siabrkn8sg3k91m02oim6c15jv3nhjph.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": ""
-        },
-        {
-          "current_key": ""
+          "current_key": "AIzaSyBiBySwa4YaC6gAd2CARTXqbYx-gpMi-68"
         }
       ],
       "services": {
-        "analytics_service": {
-          "status": 1
-        },
         "appinvite_service": {
-          "status": 1,
-          "other_platform_oauth_client": []
-        },
-        "ads_service": {
-          "status": 2
+          "other_platform_oauth_client": [
+            {
+              "client_id": "305314197999-siabrkn8sg3k91m02oim6c15jv3nhjph.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "305314197999-nq7q8ggrh5fic789r4nsnsrv0t511drl.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.abhilashkgeorge.eduskills"
+              }
+            }
+          ]
         }
       }
     }
