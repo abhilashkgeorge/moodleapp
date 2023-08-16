@@ -46,7 +46,6 @@ import { CoreDirectivesRegistry } from '@singletons/directives-registry';
 import { CoreCollapsibleItemDirective } from './collapsible-item';
 import { CoreCancellablePromise } from '@classes/cancellable-promise';
 import { AsyncDirective } from '@classes/async-directive';
-import { CorePath } from '@singletons/path';
 import { CoreDom } from '@singletons/dom';
 import { CoreEvents } from '@singletons/events';
 import { CoreRefreshContext, CORE_REFRESH_CONTEXT } from '@/core/utils/refresh-context';
@@ -54,6 +53,8 @@ import { CorePlatform } from '@services/platform';
 import { ElementController } from '@classes/element-controllers/ElementController';
 import { MediaElementController } from '@classes/element-controllers/MediaElementController';
 import { FrameElementController } from '@classes/element-controllers/FrameElementController';
+import { CoreUrl } from '@singletons/url';
+import { CoreIcons } from '@singletons/icons';
 
 /**
  * Directive to format text rendered. It renders the HTML and treats all links and media, using CoreLinkDirective
@@ -278,10 +279,10 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
             button.classList.add('core-image-viewer-icon');
             button.classList.add('hidden');
             button.setAttribute('aria-label', label);
+            const iconName = 'up-right-and-down-left-from-center';
+            const src = CoreIcons.getIconSrc('font-awesome', 'solid', iconName);
             // Add an ion-icon item to apply the right styles, but the ion-icon component won't be executed.
-            button.innerHTML = '<ion-icon name="fas-expand-alt" aria-hidden="true" \
-                src="assets/fonts/font-awesome/solid/expand-alt.svg">\
-            </ion-icon>';
+            button.innerHTML = `<ion-icon name="fas-${iconName}" aria-hidden="true" src="${src}"></ion-icon>`;
 
             button.addEventListener('click', (e: Event) => {
                 e.preventDefault();
@@ -414,6 +415,10 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
             this.contextInstanceId = site.getSiteHomeId();
         }
 
+        if (this.contextLevel === 'course' && this.contextInstanceId === undefined && this.courseId !== undefined) {
+            this.contextInstanceId = this.courseId;
+        }
+
         const filter = this.filter === undefined ?
             !!(this.contextLevel && this.contextInstanceId !== undefined) : CoreUtils.isTrueOrOne(this.filter);
 
@@ -474,6 +479,7 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
         const videos = Array.from(div.querySelectorAll('video'));
         const iframes = Array.from(div.querySelectorAll('iframe'));
         const buttons = Array.from(div.querySelectorAll('.button'));
+        const icons = Array.from(div.querySelectorAll('i.fa,i.fas,i.far,i.fab'));
         const elementsWithInlineStyles = Array.from(div.querySelectorAll('*[style]'));
         const stopClicksElements = Array.from(div.querySelectorAll('button,input,select,textarea'));
         const frames = Array.from(div.querySelectorAll(CoreIframeUtilsProvider.FRAME_TAGS.join(',').replace(/iframe,?/, '')));
@@ -544,6 +550,11 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
             if (button.querySelector('a')) {
                 button.classList.add('core-button-with-inner-link');
             }
+        });
+
+        // Handle Font Awesome icons to be rendered by the app.
+        icons.forEach((icon) => {
+            CoreIcons.replaceCSSIcon(icon);
         });
 
         // Handle inline styles.
@@ -802,23 +813,8 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
         await CoreIframeUtils.fixIframeCookies(src);
 
         if (site && src) {
-            // Check if it's a Vimeo video. If it is, use the wsplayer script instead to make restricted videos work.
-            const matches = src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)([?&]+h=([a-zA-Z0-9]*))?/);
-            if (matches && matches[1]) {
-                let newUrl = CorePath.concatenatePaths(site.getURL(), '/media/player/vimeo/wsplayer.php?video=') +
-                    matches[1] + '&token=' + site.getToken();
-
-                let privacyHash: string | undefined | null = matches[3];
-                if (!privacyHash) {
-                    // No privacy hash using the new format. Check the legacy format.
-                    const matches = src.match(/https?:\/\/player\.vimeo\.com\/video\/([0-9]+)(\/([a-zA-Z0-9]+))?/);
-                    privacyHash = matches && matches[3];
-                }
-
-                if (privacyHash) {
-                    newUrl += `&h=${privacyHash}`;
-                }
-
+            let vimeoUrl = CoreUrl.getVimeoPlayerUrl(src, site);
+            if (vimeoUrl) {
                 const domPromise = CoreDom.waitToBeInDOM(iframe);
                 this.domPromises.push(domPromise);
 
@@ -848,12 +844,12 @@ export class CoreFormatTextDirective implements OnChanges, OnDestroy, AsyncDirec
 
                 // Width and height parameters are required in 3.6 and older sites.
                 if (site && !site.isVersionGreaterEqualThan('3.7')) {
-                    newUrl += '&width=' + width + '&height=' + height;
+                    vimeoUrl += '&width=' + width + '&height=' + height;
                 }
 
-                await CoreIframeUtils.fixIframeCookies(newUrl);
+                await CoreIframeUtils.fixIframeCookies(vimeoUrl);
 
-                iframe.src = newUrl;
+                iframe.src = vimeoUrl;
 
                 if (!iframe.width) {
                     iframe.width = String(width);

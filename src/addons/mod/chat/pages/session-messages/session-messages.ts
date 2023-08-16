@@ -21,6 +21,9 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { AddonModChat } from '../../services/chat';
 import { AddonModChatFormattedSessionMessage, AddonModChatHelper } from '../../services/chat-helper';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { Translate } from '@singletons';
+import { CoreTime } from '@singletons/time';
 
 /**
  * Page that displays list of chat session messages.
@@ -42,6 +45,24 @@ export class AddonModChatSessionMessagesPage implements OnInit {
     protected sessionStart!: number;
     protected sessionEnd!: number;
     protected groupId!: number;
+    protected logView: () => void;
+
+    constructor() {
+        this.logView = CoreTime.once(async () => {
+            await CoreUtils.ignoreErrors(AddonModChat.logViewSessions(this.cmId, {
+                start: this.sessionStart,
+                end: this.sessionEnd,
+            }));
+
+            CoreAnalytics.logEvent({
+                type: CoreAnalyticsEventType.VIEW_ITEM,
+                ws: 'mod_chat_view_sessions',
+                name: Translate.instant('addon.mod_chat.messages'),
+                data: { chatid: this.chatId, category: 'chat', start: this.sessionStart, end: this.sessionEnd },
+                url: `/mod/chat/report.php?id=${this.cmId}&start=${this.sessionStart}&end=${this.sessionEnd}`,
+            });
+        });
+    }
 
     /**
      * @inheritdoc

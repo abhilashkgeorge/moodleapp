@@ -24,7 +24,7 @@ import {
 import {
     CoreCourseModulePrefetchDelegate,
     CoreCourseModulePrefetchHandler } from '@features/course/services/module-prefetch-delegate';
-import { CoreCourses } from '@features/courses/services/courses';
+import { CoreCourseAnyCourseData, CoreCourses } from '@features/courses/services/courses';
 import { CoreNavigator } from '@services/navigator';
 import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
@@ -103,7 +103,9 @@ export class AddonStorageManagerCourseStoragePage implements OnInit, OnDestroy {
             this.title = Translate.instant('core.sitehome.sitehome');
         }
 
-        this.isGuest = !!CoreNavigator.getRouteBooleanParam('isGuest');
+        this.isGuest = CoreNavigator.getRouteBooleanParam('isGuest') ??
+            (await CoreCourseHelper.courseUsesGuestAccessInfo(this.courseId)).guestAccess;
+
         this.initialSectionId = CoreNavigator.getRouteNumberParam('sectionId');
 
         this.downloadCourseEnabled = !CoreCourses.isDownloadCourseDisabledInSite();
@@ -492,6 +494,11 @@ export class AddonStorageManagerCourseStoragePage implements OnInit, OnDestroy {
 
             await this.updateModulesSizes(modules, section);
             CoreCourseHelper.calculateSectionsStatus(this.sections, this.courseId, false, false);
+
+            // For delete all, reset all section sizes so icons are updated.
+            if (this.totalSize === 0) {
+                this.sections.map(section => section.totalSize = 0);
+            }
             this.changeDetectorRef.markForCheck();
         }
     }
@@ -652,6 +659,25 @@ export class AddonStorageManagerCourseStoragePage implements OnInit, OnDestroy {
         this.changeDetectorRef.markForCheck();
     }
 
+    protected async getCourse(courseId: number): Promise<CoreCourseAnyCourseData | undefined> {
+        try {
+            // Check if user is enrolled. If enrolled, no guest access.
+            return await CoreCourses.getUserCourse(courseId, true);
+        } catch {
+            // Ignore errors.
+        }
+
+        try {
+            // The user is not enrolled in the course. Use getCourses to see if it's an admin/manager and can see the course.
+            return await CoreCourses.getCourse(courseId);
+        } catch {
+            // Ignore errors.
+        }
+
+        return await CoreCourses.getCourseByField('id', this.courseId);
+
+    }
+
     /**
      * Prefetch the whole course.
      *
@@ -661,12 +687,10 @@ export class AddonStorageManagerCourseStoragePage implements OnInit, OnDestroy {
         event.stopPropagation();
         event.preventDefault();
 
-        const courses = await CoreCourses.getUserCourses(true);
-        let course = courses.find((course) => course.id == this.courseId);
+        const course = await this.getCourse(this.courseId);
         if (!course) {
-            course = await CoreCourses.getCourse(this.courseId);
-        }
-        if (!course) {
+            CoreDomUtils.showErrorModal('core.course.errordownloadingcourse', true);
+
             return;
         }
 
@@ -680,6 +704,7 @@ export class AddonStorageManagerCourseStoragePage implements OnInit, OnDestroy {
                     isGuest: this.isGuest,
                 },
             );
+            await Promise.all(this.sections.map(section => this.updateModulesSizes(section.modules, section)));
             this.changeDetectorRef.markForCheck();
         } catch (error) {
             if (this.isDestroyed) {

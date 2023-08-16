@@ -49,17 +49,17 @@ const STATUSES = {
     'n': 'notattempted',
 };
 const STATUS_TO_ICON = {
-    assetc: 'far-file-archive',
-    asset: 'far-file-archive',
+    assetc: 'far-file-zipper',
+    asset: 'far-file-zipper',
     browsed: 'fas-book',
-    completed: 'far-check-square',
-    failed: 'fas-times',
-    incomplete: 'far-edit',
+    completed: 'far-square-check',
+    failed: 'fas-xmark',
+    incomplete: 'far-pen-to-square',
     minus: 'fas-minus',
     notattempted: 'far-square',
     passed: 'fas-check',
     plus: 'fas-plus',
-    popdown: 'far-window-close',
+    popdown: 'far-rectangle-xmark',
     popup: 'fas-window-restore',
     suspend: 'fas-pause',
     wait: 'far-clock',
@@ -1124,6 +1124,14 @@ export class AddonModScormProvider {
             currentScorm.warningMessage = warning?.message;
         }
 
+        if (response.options) {
+            const scormOptions = CoreUtils.objectToKeyValueMap(response.options, 'name', 'value');
+
+            if (scormOptions.scormstandard) {
+                currentScorm.scormStandard = Number(scormOptions.scormstandard);
+            }
+        }
+
         currentScorm.moduleurl = options.moduleUrl;
 
         return currentScorm;
@@ -1420,24 +1428,20 @@ export class AddonModScormProvider {
      *
      * @param scormId SCORM ID.
      * @param scoId SCO ID.
-     * @param name Name of the SCORM.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    logLaunchSco(scormId: number, scoId: number, name?: string, siteId?: string): Promise<void> {
+    logLaunchSco(scormId: number, scoId: number, siteId?: string): Promise<void> {
         const params: AddonModScormLaunchScoWSParams = {
             scormid: scormId,
             scoid: scoId,
         };
 
-        return CoreCourseLogHelper.logSingle(
+        return CoreCourseLogHelper.log(
             'mod_scorm_launch_sco',
             params,
             AddonModScormProvider.COMPONENT,
             scormId,
-            name,
-            'scorm',
-            { scoid: scoId },
             siteId,
         );
     }
@@ -1446,23 +1450,19 @@ export class AddonModScormProvider {
      * Report a SCORM as being viewed.
      *
      * @param id Module ID.
-     * @param name Name of the SCORM.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    logView(id: number, name?: string, siteId?: string): Promise<void> {
+    logView(id: number, siteId?: string): Promise<void> {
         const params: AddonModScormViewScormWSParams = {
             scormid: id,
         };
 
-        return CoreCourseLogHelper.logSingle(
+        return CoreCourseLogHelper.log(
             'mod_scorm_view_scorm',
             params,
             AddonModScormProvider.COMPONENT,
             id,
-            name,
-            'scorm',
-            {},
             siteId,
         );
     }
@@ -1873,8 +1873,17 @@ export type AddonModScormGetScormsByCoursesWSParams = {
  * Data returned by mod_scorm_get_scorms_by_courses WS.
  */
 export type AddonModScormGetScormsByCoursesWSResponse = {
+    options?: AddonModScormOptions[]; // @since v4.3. Scorm options
     scorms: AddonModScormScormWSData[];
     warnings?: CoreWSExternalWarning[];
+};
+
+/**
+ * Scorm options returned by mod_scorm_get_scorms_by_courses WS.
+ */
+export type AddonModScormOptions = {
+    name: string;
+    value: string;
 };
 
 /**
@@ -1939,6 +1948,7 @@ export type AddonModScormScormWSData = {
 export type AddonModScormScorm = AddonModScormScormWSData & {
     warningMessage?: string;
     moduleurl?: string;
+    scormStandard?: number;
 };
 
 /**

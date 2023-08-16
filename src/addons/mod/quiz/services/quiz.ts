@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import { SafeNumber } from '@/core/utils/types';
 import { Injectable } from '@angular/core';
 
 import { CoreError } from '@classes/errors/error';
@@ -20,7 +21,6 @@ import { CoreSite, CoreSiteWSPreSets } from '@classes/site';
 import { CoreCourseCommonModWSOptions } from '@features/course/services/course';
 import { CoreCourseLogHelper } from '@features/course/services/log-helper';
 import { CoreGradesFormattedItem, CoreGradesHelper } from '@features/grades/services/grades-helper';
-import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import {
     CoreQuestion,
     CoreQuestionQuestionParsed,
@@ -99,7 +99,7 @@ export class AddonModQuizProvider {
      * @returns Grade to display.
      */
     formatGrade(grade?: number | null, decimals?: number): string {
-        if (grade === undefined || grade == -1 || grade === null || isNaN(grade)) {
+        if (grade === undefined || grade === -1 || grade === null || isNaN(grade)) {
             return Translate.instant('addon.mod_quiz.notyetgraded');
         }
 
@@ -290,7 +290,7 @@ export class AddonModQuizProvider {
                 return dueDate * 1000;
 
             case AddonModQuizProvider.ATTEMPT_OVERDUE:
-                return (dueDate + quiz.graceperiod!) * 1000;
+                return (dueDate + (quiz.graceperiod ?? 0)) * 1000;
 
             default:
                 this.logger.warn('Unexpected state when getting due date: ' + attempt.state);
@@ -356,7 +356,7 @@ export class AddonModQuizProvider {
                     Translate.instant('addon.mod_quiz.statefinished'),
                     Translate.instant(
                         'addon.mod_quiz.statefinisheddetails',
-                        { $a: CoreTimeUtils.userDate(attempt.timefinish! * 1000) },
+                        { $a: CoreTimeUtils.userDate((attempt.timefinish ?? 0) * 1000) },
                     ),
                 ];
 
@@ -592,7 +592,7 @@ export class AddonModQuizProvider {
      */
     async getFeedbackForGrade(
         quizId: number,
-        grade: number,
+        grade: SafeNumber,
         options: CoreCourseCommonModWSOptions = {},
     ): Promise<AddonModQuizGetQuizFeedbackForGradeWSResponse> {
         const site = await CoreSites.getSite(options.siteId);
@@ -625,7 +625,7 @@ export class AddonModQuizProvider {
         }
 
         if (quiz.questiondecimalpoints == -1) {
-            return quiz.decimalpoints!;
+            return quiz.decimalpoints ?? 1;
         }
 
         return quiz.questiondecimalpoints;
@@ -1534,7 +1534,6 @@ export class AddonModQuizProvider {
      * @param page Page number.
      * @param preflightData Preflight required data (like password).
      * @param offline Whether attempt is offline.
-     * @param quiz Quiz instance. If set, a Firebase event will be stored.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
@@ -1543,7 +1542,6 @@ export class AddonModQuizProvider {
         page: number = 0,
         preflightData: Record<string, string> = {},
         offline?: boolean,
-        quiz?: AddonModQuizQuizWSData,
         siteId?: string,
     ): Promise<void> {
         const site = await CoreSites.getSite(siteId);
@@ -1563,16 +1561,6 @@ export class AddonModQuizProvider {
         if (offline) {
             promises.push(AddonModQuizOffline.setAttemptCurrentPage(attemptId, page, site.getId()));
         }
-        if (quiz) {
-            CorePushNotifications.logViewEvent(
-                quiz.id,
-                quiz.name,
-                'quiz',
-                'mod_quiz_view_attempt',
-                { attemptid: attemptId, page },
-                siteId,
-            );
-        }
 
         await Promise.all(promises);
     }
@@ -1582,23 +1570,19 @@ export class AddonModQuizProvider {
      *
      * @param attemptId Attempt ID.
      * @param quizId Quiz ID.
-     * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    logViewAttemptReview(attemptId: number, quizId: number, name?: string, siteId?: string): Promise<void> {
+    logViewAttemptReview(attemptId: number, quizId: number, siteId?: string): Promise<void> {
         const params: AddonModQuizViewAttemptReviewWSParams = {
             attemptid: attemptId,
         };
 
-        return CoreCourseLogHelper.logSingle(
+        return CoreCourseLogHelper.log(
             'mod_quiz_view_attempt_review',
             params,
             AddonModQuizProvider.COMPONENT,
             quizId,
-            name,
-            'quiz',
-            params,
             siteId,
         );
     }
@@ -1609,7 +1593,6 @@ export class AddonModQuizProvider {
      * @param attemptId Attempt ID.
      * @param preflightData Preflight required data (like password).
      * @param quizId Quiz ID.
-     * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
@@ -1617,7 +1600,6 @@ export class AddonModQuizProvider {
         attemptId: number,
         preflightData: Record<string, string>,
         quizId: number,
-        name?: string,
         siteId?: string,
     ): Promise<void> {
         const params: AddonModQuizViewAttemptSummaryWSParams = {
@@ -1629,14 +1611,11 @@ export class AddonModQuizProvider {
             ),
         };
 
-        return CoreCourseLogHelper.logSingle(
+        return CoreCourseLogHelper.log(
             'mod_quiz_view_attempt_summary',
             params,
             AddonModQuizProvider.COMPONENT,
             quizId,
-            name,
-            'quiz',
-            { attemptid: attemptId },
             siteId,
         );
     }
@@ -1645,23 +1624,19 @@ export class AddonModQuizProvider {
      * Report a quiz as being viewed.
      *
      * @param id Module ID.
-     * @param name Name of the quiz.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    logViewQuiz(id: number, name?: string, siteId?: string): Promise<void> {
+    logViewQuiz(id: number, siteId?: string): Promise<void> {
         const params: AddonModQuizViewQuizWSParams = {
             quizid: id,
         };
 
-        return CoreCourseLogHelper.logSingle(
+        return CoreCourseLogHelper.log(
             'mod_quiz_view_quiz',
             params,
             AddonModQuizProvider.COMPONENT,
             id,
-            name,
-            'quiz',
-            {},
             siteId,
         );
     }
@@ -1780,7 +1755,7 @@ export class AddonModQuizProvider {
      * @returns Whether quiz is graded.
      */
     quizHasGrades(quiz: AddonModQuizQuizWSData): boolean {
-        return quiz.grade! >= 0.000005 && quiz.sumgrades! >= 0.000005;
+        return (quiz.grade ?? 0) >= 0.000005 && (quiz.sumgrades ?? 0) >= 0.000005;
     }
 
     /**
@@ -1800,10 +1775,10 @@ export class AddonModQuizProvider {
     ): string | undefined {
         let grade: number | undefined;
 
-        const rawGradeNum = typeof rawGrade == 'string' ? parseFloat(rawGrade) : rawGrade;
+        const rawGradeNum = typeof rawGrade === 'string' ? parseFloat(rawGrade) : rawGrade;
         if (rawGradeNum !== undefined && rawGradeNum !== null && !isNaN(rawGradeNum)) {
-            if (quiz.sumgrades! >= 0.000005) {
-                grade = rawGradeNum * quiz.grade! / quiz.sumgrades!;
+            if (quiz.sumgrades && quiz.sumgrades >= 0.000005) {
+                grade = rawGradeNum * (quiz.grade ?? 0) / quiz.sumgrades;
             } else {
                 grade = 0;
             }
@@ -1816,7 +1791,7 @@ export class AddonModQuizProvider {
         if (format === 'question') {
             return this.formatGrade(grade, this.getGradeDecimals(quiz));
         } else if (format) {
-            return this.formatGrade(grade, quiz.decimalpoints!);
+            return this.formatGrade(grade, quiz.decimalpoints ?? 1);
         }
 
         return String(grade);
@@ -2053,7 +2028,7 @@ export type AddonModQuizAttemptWSData = {
     timemodified?: number; // Last modified time.
     timemodifiedoffline?: number; // Last modified time via webservices.
     timecheckstate?: number; // Next time quiz cron should check attempt for state changes. NULL means never check.
-    sumgrades?: number | null; // Total marks for this attempt.
+    sumgrades?: SafeNumber | null; // Total marks for this attempt.
 };
 
 /**
@@ -2304,7 +2279,7 @@ export type AddonModQuizGetUserBestGradeWSParams = {
  */
 export type AddonModQuizGetUserBestGradeWSResponse = {
     hasgrade: boolean; // Whether the user has a grade on the given quiz.
-    grade?: number; // The grade (only if the user has a grade).
+    grade?: SafeNumber; // The grade (only if the user has a grade).
     gradetopass?: number; // @since 3.11. The grade to pass the quiz (only if set).
     warnings?: CoreWSExternalWarning[];
 };

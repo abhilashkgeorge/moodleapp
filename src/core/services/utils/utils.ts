@@ -35,9 +35,12 @@ import { CoreWindow } from '@singletons/window';
 import { CoreColors } from '@singletons/colors';
 import { CorePromisedValue } from '@classes/promised-value';
 import { CorePlatform } from '@services/platform';
-import { CoreErrorWithOptions } from '@classes/errors/errorwithtitle';
+import { CoreErrorWithOptions } from '@classes/errors/errorwithoptions';
 import { CoreFilepool } from '@services/filepool';
 import { CoreSites } from '@services/sites';
+import { CoreCancellablePromise } from '@classes/cancellable-promise';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { CoreUrlUtils } from './url';
 
 export type TreeNode<T> = T & { children: TreeNode<T>[] };
 
@@ -560,8 +563,7 @@ export class CoreUtilsProvider {
 
         const localeSeparator = Translate.instant('core.decsep');
 
-        // Convert float to string.
-        const floatString = float + '';
+        const floatString = String(float);
 
         return floatString.replace('.', localeSeparator);
     }
@@ -1031,11 +1033,29 @@ export class CoreUtilsProvider {
             // Error, use the original path.
         }
 
-        try {
+        const openFile = async (mimetype?: string) => {
             if (this.shouldOpenWithDialog(options)) {
                 await FileOpener.showOpenWithDialog(path, mimetype || '');
             } else {
                 await FileOpener.open(path, mimetype || '');
+            }
+        };
+
+        try {
+            try {
+                await openFile(mimetype);
+            } catch (error) {
+                if (!extension || !error || Number(error.status) !== 9) {
+                    throw error;
+                }
+
+                // Cannot open mimetype. Check if there is a deprecated mimetype for the extension.
+                const deprecatedMimetype = CoreMimetypeUtils.getDeprecatedMimeType(extension);
+                if (!deprecatedMimetype || deprecatedMimetype === mimetype) {
+                    throw error;
+                }
+
+                await openFile(deprecatedMimetype);
             }
         } catch (error) {
             this.logger.error('Error opening file ' + path + ' with mimetype ' + mimetype);
@@ -1058,7 +1078,7 @@ export class CoreUtilsProvider {
      * @param options Override default options passed to InAppBrowser.
      * @returns The opened window.
      */
-    openInApp(url: string, options?: InAppBrowserOptions): InAppBrowserObject {
+    openInApp(url: string, options?: CoreUtilsOpenInAppOptions): InAppBrowserObject {
         options = options || {};
         options.usewkwebview = 'yes'; // Force WKWebView in iOS.
         options.enableViewPortScale = options.enableViewPortScale ?? 'yes'; // Enable zoom on iOS by default.
@@ -1116,6 +1136,11 @@ export class CoreUtilsProvider {
             });
         }
 
+        CoreAnalytics.logEvent({
+            type: CoreAnalyticsEventType.OPEN_LINK,
+            link: CoreUrlUtils.unfixPluginfileURL(options.originalUrl ?? url),
+        });
+
         return this.iabInstance;
     }
 
@@ -1170,13 +1195,19 @@ export class CoreUtilsProvider {
      * @param options Options.
      */
     async openInBrowser(url: string, options: CoreUtilsOpenInBrowserOptions = {}): Promise<void> {
+        const originaUrl = CoreUrlUtils.unfixPluginfileURL(options.originalUrl ?? options.browserWarningUrl ?? url);
         if (options.showBrowserWarning || options.showBrowserWarning === undefined) {
             try {
-                await CoreWindow.confirmOpenBrowserIfNeeded(options.browserWarningUrl ?? url);
+                await CoreWindow.confirmOpenBrowserIfNeeded(originaUrl);
             } catch (error) {
                 return; // Cancelled, stop.
             }
         }
+
+        CoreAnalytics.logEvent({
+            type: CoreAnalyticsEventType.OPEN_LINK,
+            link: originaUrl,
+        });
 
         window.open(url, '_system');
     }
@@ -1204,12 +1235,19 @@ export class CoreUtilsProvider {
                 type: mimetype,
             };
 
-            return WebIntent.startActivity(options).catch((error) => {
+            try {
+                await WebIntent.startActivity(options);
+
+                CoreAnalytics.logEvent({
+                    type: CoreAnalyticsEventType.OPEN_LINK,
+                    link: CoreUrlUtils.unfixPluginfileURL(url),
+                });
+            } catch (error) {
                 this.logger.error('Error opening online file ' + url + ' with mimetype ' + mimetype);
                 this.logger.error('Error: ', JSON.stringify(error));
 
                 throw new Error(Translate.instant('core.erroropenfilenoapp'));
-            });
+            }
         }
 
         // In the rest of platforms we need to open them in InAppBrowser.
@@ -1312,11 +1350,7 @@ export class CoreUtilsProvider {
         keyName: string,
         valueName: string,
         keyPrefix?: string,
-    ): {[name: string]: T} | undefined {
-        if (!objects) {
-            return;
-        }
-
+    ): {[name: string]: T} {
         const prefixSubstr = keyPrefix ? keyPrefix.length : 0;
         const mapped = {};
         objects.forEach((item) => {
@@ -1538,7 +1572,7 @@ export class CoreUtilsProvider {
     }
 
     /**
-     * Converts locale specific floating point/comma number back to standard PHP float value.
+     * Converts locale specific floating point/comma number back to a standard float number.
      * Do NOT try to do any math operations before this conversion on any user submitted floats!
      * Based on Moodle's unformat_float function.
      *
@@ -1546,8 +1580,7 @@ export class CoreUtilsProvider {
      * @param strict If true, then check the input and return false if it is not a valid number.
      * @returns False if bad format, empty string if empty value or the parsed float if not.
      */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    unformatFloat(localeFloat: any, strict?: boolean): false | '' | number {
+    unformatFloat(localeFloat: string | number | null | undefined, strict?: boolean): false | '' | number {
         // Bad format on input type number.
         if (localeFloat === undefined) {
             return false;
@@ -1559,7 +1592,7 @@ export class CoreUtilsProvider {
         }
 
         // Convert float to string.
-        localeFloat += '';
+        localeFloat = String(localeFloat);
         localeFloat = localeFloat.trim();
 
         if (localeFloat == '') {
@@ -1569,10 +1602,12 @@ export class CoreUtilsProvider {
         localeFloat = localeFloat.replace(' ', ''); // No spaces - those might be used as thousand separators.
         localeFloat = localeFloat.replace(Translate.instant('core.decsep'), '.');
 
-        const parsedFloat = parseFloat(localeFloat);
+        // Use Number instead of parseFloat because the latter truncates the number when it finds ",", while Number returns NaN.
+        // If the number still has "," then it means it's not a valid separator.
+        const parsedFloat = Number(localeFloat);
 
         // Bad format.
-        if (strict && (!isFinite(localeFloat) || isNaN(parsedFloat))) {
+        if (strict && (!isFinite(parsedFloat) || isNaN(parsedFloat))) {
             return false;
         }
 
@@ -1772,9 +1807,9 @@ export class CoreUtilsProvider {
      * @param fallback Value to return if the promise is rejected.
      * @returns Promise with ignored errors, resolving to the fallback result if provided.
      */
-    async ignoreErrors<Result>(promise: Promise<Result>): Promise<Result | undefined>;
+    async ignoreErrors<Result>(promise?: Promise<Result>): Promise<Result | undefined>;
     async ignoreErrors<Result, Fallback>(promise: Promise<Result>, fallback: Fallback): Promise<Result | Fallback>;
-    async ignoreErrors<Result, Fallback>(promise: Promise<Result>, fallback?: Fallback): Promise<Result | Fallback | undefined> {
+    async ignoreErrors<Result, Fallback>(promise?: Promise<Result>, fallback?: Fallback): Promise<Result | Fallback | undefined> {
         try {
             const result = await promise;
 
@@ -1793,6 +1828,34 @@ export class CoreUtilsProvider {
      */
     wait(milliseconds: number): Promise<void> {
         return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+
+    /**
+     * Wait until a given condition is met.
+     *
+     * @param condition Condition.
+     * @returns Cancellable promise.
+     */
+    waitFor(condition: () => boolean, interval: number = 50): CoreCancellablePromise<void> {
+        if (condition()) {
+            return CoreCancellablePromise.resolve();
+        }
+
+        let intervalId: number | undefined;
+
+        return new CoreCancellablePromise<void>(
+            async (resolve) => {
+                intervalId = window.setInterval(() => {
+                    if (!condition()) {
+                        return;
+                    }
+
+                    resolve();
+                    window.clearInterval(intervalId);
+                }, interval);
+            },
+            () => window.clearInterval(intervalId),
+        );
     }
 
     /**
@@ -1872,7 +1935,18 @@ export type CoreUtilsOpenFileOptions = {
  */
 export type CoreUtilsOpenInBrowserOptions = {
     showBrowserWarning?: boolean; // Whether to display a warning before opening in browser. Defaults to true.
-    browserWarningUrl?: string; // The URL to display in the warning message. Use it to hide sensitive information.
+    originalUrl?: string; // Original URL to open (in case the URL was treated, e.g. to add a token or an auto-login).
+    /**
+     * @deprecated since 4.3, use originalUrl instead.
+     */
+    browserWarningUrl?: string;
+};
+
+/**
+ * Options for opening in InAppBrowser.
+ */
+export type CoreUtilsOpenInAppOptions = InAppBrowserOptions & {
+    originalUrl?: string; // Original URL to open (in case the URL was treated, e.g. to add a token or an auto-login).
 };
 
 /**

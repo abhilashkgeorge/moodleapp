@@ -71,7 +71,7 @@ import { CoreNavigationOptions, CoreNavigator } from '@services/navigator';
 import { CoreSiteHomeHomeHandlerService } from '@features/sitehome/services/handlers/sitehome-home';
 import { CoreStatusWithWarningsWSResponse } from '@services/ws';
 import { CoreCourseWithImageAndColor } from '@features/courses/services/courses-helper';
-import { CoreCourseSummaryPage } from '../pages/course-summary/course-summary';
+import { CoreCourseSummaryPage } from '../pages/course-summary/course-summary.page';
 import { CoreRemindersPushNotificationData } from '@features/reminders/services/reminders';
 import { CoreLocalNotifications } from '@services/local-notifications';
 
@@ -469,12 +469,6 @@ export class CoreCourseHelperProvider {
             let handlers: CoreCourseOptionsHandlerToDisplay[] = [];
             let menuHandlers: CoreCourseOptionsMenuHandlerToDisplay[] = [];
             let success = true;
-            let isGuest = false;
-
-            if (options.canHaveGuestCourses) {
-                // Check if the user can only access as guest.
-                isGuest = await this.courseUsesGuestAccess(course.id, siteId);
-            }
 
             // Get the sections and the handlers.
             subPromises.push(CoreCourse.getSections(course.id, false, true).then((courseSections) => {
@@ -483,12 +477,12 @@ export class CoreCourseHelperProvider {
                 return;
             }));
 
-            subPromises.push(CoreCourseOptionsDelegate.getHandlersToDisplay(course, false, isGuest).then((cHandlers) => {
+            subPromises.push(CoreCourseOptionsDelegate.getHandlersToDisplay(course, false).then((cHandlers) => {
                 handlers = cHandlers;
 
                 return;
             }));
-            subPromises.push(CoreCourseOptionsDelegate.getMenuHandlersToDisplay(course, false, isGuest).then((mHandlers) => {
+            subPromises.push(CoreCourseOptionsDelegate.getMenuHandlersToDisplay(course, false).then((mHandlers) => {
                 menuHandlers = mHandlers;
 
                 return;
@@ -598,19 +592,22 @@ export class CoreCourseHelperProvider {
     }
 
     /**
-     * Check whether a course is accessed using guest access.
+     * Check whether a course is accessed using guest access and if it requires password to enter.
      *
      * @param courseId Course ID.
      * @param siteId Site ID. If not defined, current site.
-     * @returns Promise resolved with boolean: whether course is accessed using guest access.
+     * @returns Promise resolved with guestAccess and passwordRequired booleans.
      */
-    async courseUsesGuestAccess(courseId: number, siteId?: string): Promise<boolean> {
+    async courseUsesGuestAccessInfo(
+        courseId: number,
+        siteId?: string,
+    ): Promise<{guestAccess: boolean; passwordRequired?: boolean}> {
         try {
             try {
                 // Check if user is enrolled. If enrolled, no guest access.
                 await CoreCourses.getUserCourse(courseId, false, siteId);
 
-                return false;
+                return { guestAccess: false };
             } catch {
                 // Ignore errors.
             }
@@ -619,7 +616,7 @@ export class CoreCourseHelperProvider {
                 // The user is not enrolled in the course. Use getCourses to see if it's an admin/manager and can see the course.
                 await CoreCourses.getCourse(courseId, siteId);
 
-                return false;
+                return { guestAccess: false };
             } catch {
                 // Ignore errors.
             }
@@ -630,19 +627,18 @@ export class CoreCourseHelperProvider {
             const method = enrolmentMethods.find((method) => method.type === 'guest');
 
             if (!method) {
-                return false;
+                return { guestAccess: false };
             }
 
             const info = await CoreCourses.getCourseGuestEnrolmentInfo(method.id);
-            if (!info.status) {
-                // Not active, reject.
-                return false;
-            }
 
-            // Don't allow guest access if it requires a password.
-            return !info.passwordrequired;
+            // Don't allow guest access if it requires a password and it's available.
+            return {
+                guestAccess: info.status && (!info.passwordrequired || CoreCourses.isValidateGuestAccessPasswordAvailable()),
+                passwordRequired: info.passwordrequired,
+            };
         } catch {
-            return false;
+            return { guestAccess: false };
         }
     }
 
@@ -1215,20 +1211,17 @@ export class CoreCourseHelperProvider {
      *
      * @param courses Courses array to prefetch.
      * @param prefetch Prefetch information to be updated.
-     * @param options Other options.
      * @returns Promise resolved when done.
      */
     async prefetchCourses(
         courses: CoreCourseAnyCourseData[],
         prefetch: CorePrefetchStatusInfo,
-        options: CoreCoursePrefetchCoursesOptions = {},
     ): Promise<void> {
         prefetch.loading = true;
         prefetch.icon = CoreConstants.ICON_DOWNLOADING;
         prefetch.badge = '';
 
         const prefetchOptions = {
-            ...options,
             onProgress: (progress) => {
                 prefetch.badge = progress.count + ' / ' + progress.total;
                 prefetch.badgeA11yText = Translate.instant('core.course.downloadcoursesprogressdescription', progress);
@@ -1948,6 +1941,24 @@ export class CoreCourseHelperProvider {
     }
 
     /**
+     * Check if user can access the course.
+     *
+     * @param courseId Course ID.
+     * @returns Promise resolved with boolean: whether user can access the course.
+     */
+    async userHasAccessToCourse(courseId: number): Promise<boolean> {
+        if (CoreNetwork.isOnline()) {
+            return CoreUtils.promiseWorks(
+                CoreCourse.getSections(courseId, true, true, { getFromCache: false, emergencyCache: false }, undefined, false),
+            );
+        } else {
+            return CoreUtils.promiseWorks(
+                CoreCourse.getSections(courseId, true, true, { getCacheUsingCacheKey: true }, undefined, false),
+            );
+        }
+    }
+
+    /**
      * Delete course files.
      *
      * @param courseId Course id.
@@ -2043,7 +2054,7 @@ export class CoreCourseHelperProvider {
      * @returns Course summary page module.
      */
     async getCourseSummaryRouteModule(): Promise<unknown> {
-        return import('../pages/course-summary/course-summary.module').then(m => m.CoreCourseSummaryPageModule);
+        return import('../course-summary-lazy.module').then(m => m.CoreCourseSummaryLazyModule);
     }
 
     /**
@@ -2144,16 +2155,9 @@ export type CoreCoursePrefetchCourseOptions = {
 };
 
 /**
- * Options for prefetch courses function.
- */
-export type CoreCoursePrefetchCoursesOptions = {
-    canHaveGuestCourses?: boolean; // Whether the list of courses can contain courses with only guest access.
-};
-
-/**
  * Options for confirm and prefetch courses function.
  */
-export type CoreCourseConfirmPrefetchCoursesOptions = CoreCoursePrefetchCoursesOptions & {
+export type CoreCourseConfirmPrefetchCoursesOptions = {
     onProgress?: (data: CoreCourseCoursesProgress) => void;
 };
 

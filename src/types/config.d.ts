@@ -42,8 +42,7 @@ export interface EnvironmentConfig {
     zoomlevels: Record<CoreZoomLevel, number>;
     defaultZoomLevel?: CoreZoomLevel; // Set the default zoom level of the app.
     customurlscheme: string;
-    siteurl: string | CoreLoginSiteInfo[];
-    sitename: string;
+    sites: CoreLoginSiteInfo[];
     multisitesdisplay: CoreLoginSiteSelectorListMethod;
     sitefindersettings: Partial<CoreLoginSiteFinderSettings>;
     onlyallowlistedsites: boolean;
@@ -51,7 +50,6 @@ export interface EnvironmentConfig {
     forcedefaultlanguage: boolean;
     privacypolicy: string;
     notificoncolor: string;
-    enableanalytics: boolean;
     enableonboarding: boolean;
     forceColorScheme: CoreColorScheme;
     forceLoginLogo: boolean;
@@ -64,6 +62,7 @@ export interface EnvironmentConfig {
     customMainMenuItems?: CoreMainMenuLocalizedCustomItem[];
     feedbackFormUrl?: string | false;
     a11yStatement?: string | false;
+    legalDisclaimer?: string | false;
     iabToolbarColors?: 'auto' | { background: string; text?: string } | null;
     wsrequestqueuelimit: number; // Maximum number of requests allowed in the queue.
     wsrequestqueuedelay: number; // Maximum number of miliseconds to wait before processing the queue.

@@ -15,12 +15,12 @@
 import { Injectable } from '@angular/core';
 import { CoreCourses } from '@features/courses/services/courses';
 import { CoreSites } from '@services/sites';
-import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import { makeSingleton } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreWSExternalWarning } from '@services/ws';
 import { CoreSiteWSPreSets } from '@classes/site';
 import { CoreError } from '@classes/errors/error';
+import { SafeNumber } from '@/core/utils/types';
 
 /**
  * Service to provide grade functionalities.
@@ -74,6 +74,16 @@ export class CoreGradesProvider {
      */
     protected getCourseGradesPrefixCacheKey(courseId: number): string {
         return this.ROOT_CACHE_KEY + 'items:' + courseId + ':';
+    }
+
+    /**
+     * Get prefix cache key for grade permissions WS calls.
+     *
+     * @param courseId ID of the course to check permissions.
+     * @returns Cache key.
+     */
+    protected getCourseGradesPermissionsCacheKey(courseId: number): string {
+        return this.getCourseGradesPrefixCacheKey(courseId) + ':canviewallgrades';
     }
 
     /**
@@ -290,6 +300,17 @@ export class CoreGradesProvider {
     }
 
     /**
+     * Invalidates course grade permissions WS calls.
+     *
+     * @param courseId ID of the course to get the permissions from.
+     */
+    async invalidateCourseGradesPermissionsData(courseId: number): Promise<void> {
+        const site = CoreSites.getRequiredCurrentSite();
+
+        await site.invalidateWsCacheForKey(this.getCourseGradesPermissionsCacheKey(courseId));
+    }
+
+    /**
      * Returns whether or not the plugin is enabled for a certain site.
      *
      * @param siteId Site ID. If not defined, current site.
@@ -336,34 +357,16 @@ export class CoreGradesProvider {
      *
      * @param courseId Course ID.
      * @param userId User ID.
-     * @param name Course name. If not set, it will be calculated.
      * @returns Promise resolved when done.
      */
-    async logCourseGradesView(courseId: number, userId: number, name?: string): Promise<void> {
+    async logCourseGradesView(courseId: number, userId: number): Promise<void> {
         userId = userId || CoreSites.getCurrentSiteUserId();
-
-        const wsName = 'gradereport_user_view_grade_report';
-
-        if (!name) {
-            // eslint-disable-next-line promise/catch-or-return
-            CoreCourses.getUserCourse(courseId, true)
-                .catch(() => ({}))
-                .then(course => CorePushNotifications.logViewEvent(
-                    courseId,
-                    'fullname' in course ? course.fullname : '',
-                    'grades',
-                    wsName,
-                    { userid: userId },
-                ));
-        } else {
-            CorePushNotifications.logViewEvent(courseId, name, 'grades', wsName, { userid: userId });
-        }
 
         const site = CoreSites.getCurrentSite();
 
         const params: CoreGradesGradereportViewGradeReportWSParams = { courseid: courseId, userid: userId };
 
-        await site?.write(wsName, params);
+        await site?.write('gradereport_user_view_grade_report', params);
     }
 
     /**
@@ -381,11 +384,33 @@ export class CoreGradesProvider {
             courseid: courseId,
         };
 
-        CorePushNotifications.logViewListEvent('grades', 'gradereport_overview_view_grade_report', params);
-
         const site = CoreSites.getCurrentSite();
 
         await site?.write('gradereport_overview_view_grade_report', params);
+    }
+
+    /**
+     * Check whether the current user can view all the grades in the course.
+     *
+     * @param courseId Course id.
+     * @returns Whether the current user can view all the grades.
+     */
+    async canViewAllGrades(courseId: number): Promise<boolean> {
+        const site = CoreSites.getRequiredCurrentSite();
+
+        if (!site.wsAvailable('gradereport_user_get_access_information')) {
+            return false;
+        }
+
+        const params: CoreGradesGetUserAccessInformationWSParams = { courseid: courseId };
+        const preSets: CoreSiteWSPreSets = { cacheKey: this.getCourseGradesPermissionsCacheKey(courseId) };
+        const access = await site.read<CoreGradesGetUserAccessInformationWSResponse>(
+            'gradereport_user_get_access_information',
+            params,
+            preSets,
+        );
+
+        return access.canviewallgrades;
     }
 
 }
@@ -426,6 +451,13 @@ type CoreGradesGetOverviewCourseGradesWSParams = {
 };
 
 /**
+ * Params of gradereport_user_get_access_information WS.
+ */
+type CoreGradesGetUserAccessInformationWSParams = {
+    courseid: number; // Id of the course.
+};
+
+/**
  * Data returned by gradereport_user_get_grade_items WS.
  */
 export type CoreGradesGetUserGradeItemsWSResponse = {
@@ -457,6 +489,15 @@ export type CoreGradesGetOverviewCourseGradesWSResponse = {
 };
 
 /**
+ * Data returned by gradereport_user_get_access_information WS.
+ */
+type CoreGradesGetUserAccessInformationWSResponse = {
+    canviewusergradereport: boolean;
+    canviewmygrades: boolean;
+    canviewallgrades: boolean;
+};
+
+/**
  * Grade item data.
  */
 export type CoreGradesGradeItem = {
@@ -475,7 +516,7 @@ export type CoreGradesGradeItem = {
     weightraw?: number; // Weight raw.
     weightformatted?: string; // Weight.
     status?: string; // Status.
-    graderaw?: number; // Grade raw.
+    graderaw?: SafeNumber; // Grade raw.
     gradedatesubmitted?: number; // Grade submit date.
     gradedategraded?: number; // Grade graded date.
     gradehiddenbydate?: boolean; // Grade hidden by date?.

@@ -290,7 +290,7 @@ export class CoreCoursesProvider {
     }
 
     /**
-     * Get course.
+     * Get course information if user has persmissions to view.
      *
      * @param id ID of the course to get.
      * @param siteId Site to get the courses from. If not defined, use current site.
@@ -324,7 +324,8 @@ export class CoreCoursesProvider {
             updateFrequency: CoreSite.FREQUENCY_RARELY,
         };
 
-        return site.read('core_enrol_get_course_enrolment_methods', params, preSets);
+        return site.read<CoreEnrolGetCourseEnrolmentMethodsWSResponse>
+        ('core_enrol_get_course_enrolment_methods', params, preSets);
     }
 
     /**
@@ -366,6 +367,47 @@ export class CoreCoursesProvider {
      */
     protected getCourseGuestEnrolmentInfoCacheKey(instanceId: number): string {
         return ROOT_CACHE_KEY + 'guestinfo:' + instanceId;
+    }
+
+    /**
+     * Check if guest password validation WS is available on the current site.
+     *
+     * @returns Whether guest password validation WSget courses by field is available.
+     */
+    isValidateGuestAccessPasswordAvailable(): boolean {
+        return CoreSites.wsAvailableInCurrentSite('enrol_guest_validate_password');
+    }
+
+    /**
+     * Perform password validation of guess access.
+     *
+     * @param enrolmentInstanceId Instance id of guest enrolment plugin.
+     * @param password Course Password.
+     * @returns Wether the password is valid.
+     */
+    async validateGuestAccessPassword(
+        enrolmentInstanceId: number,
+        password: string,
+    ): Promise<EnrolGuestValidatePasswordWSResponse> {
+        const site = CoreSites.getCurrentSite();
+
+        if (!site) {
+            return {
+                validated: false,
+            };
+        }
+        const preSets: CoreSiteWSPreSets = {
+            getFromCache: false,
+            saveToCache: false,
+            emergencyCache: false,
+        };
+
+        const params: EnrolGuestValidatePasswordWSParams = {
+            instanceid: enrolmentInstanceId,
+            password,
+        };
+
+        return await site.read<EnrolGuestValidatePasswordWSResponse>('enrol_guest_validate_password', params, preSets);
     }
 
     /**
@@ -1239,6 +1281,18 @@ export class CoreCoursesProvider {
     }
 
     /**
+     * Report a dashboard or my courses page view event.
+     *
+     * @param page Page to view.
+     */
+    async logView(page: 'my' | 'dashboard'): Promise<void> {
+        const site = CoreSites.getRequiredCurrentSite();
+        const params: CoreMyViewPageWSParams = { page };
+
+        await site.write('core_my_view_page', params);
+    }
+
+    /**
      * Search courses.
      *
      * @param text Text to search.
@@ -1773,15 +1827,26 @@ type CoreEnrolGetCourseEnrolmentMethodsWSParams = {
 };
 
 /**
- * Course enrolment method.
+ * Data returned by core_enrol_get_course_enrolment_methods WS.
  */
-export type CoreCourseEnrolmentMethod = {
+type CoreEnrolGetCourseEnrolmentMethodsWSResponse = CoreCourseEnrolmentMethod[];
+
+/**
+ * Course enrolment basic info.
+ */
+export type CoreCourseEnrolmentInfo = {
     id: number; // Id of course enrolment instance.
     courseid: number; // Id of course.
     type: string; // Type of enrolment plugin.
     name: string; // Name of enrolment plugin.
-    status: string; // Status of enrolment plugin.
+};
+
+/**
+ * Course enrolment method.
+ */
+export type CoreCourseEnrolmentMethod = CoreCourseEnrolmentInfo & {
     wsfunction?: string; // Webservice function to get more information.
+    status: string; // Status of enrolment plugin. True if successful, else error message or false.
 };
 
 /**
@@ -1822,8 +1887,9 @@ export type CoreCourseGetRecentCoursesOptions = CoreSitesCommonWSOptions & {
 /**
  * Course guest enrolment method.
  */
-export type CoreCourseEnrolmentGuestMethod = CoreCourseEnrolmentMethod & {
-    passwordrequired: boolean; // Is a password required?.
+export type CoreCourseEnrolmentGuestMethod = CoreCourseEnrolmentInfo & {
+    passwordrequired: boolean; // Is a password required?
+    status: boolean; // Is the enrolment enabled?
 };
 
 /**
@@ -1856,4 +1922,28 @@ export type CoreCourseAnyCourseData = CoreEnrolledCourseData | CoreCourseSearche
 export type CoreCourseAnyCourseDataWithOptions = CoreCourseAnyCourseData & {
     navOptions?: CoreCourseUserAdminOrNavOptionIndexed;
     admOptions?: CoreCourseUserAdminOrNavOptionIndexed;
+};
+
+/**
+ * Params of enrol_guest_validate_password WS.
+ */
+type EnrolGuestValidatePasswordWSParams = {
+    instanceid: number; // instance id of guest enrolment plugin
+    password: string; // the course password
+};
+
+/**
+ * Data returned by enrol_guest_get_instance_info WS.
+ */
+export type EnrolGuestValidatePasswordWSResponse = {
+    validated: boolean; // Whether the password was successfully validated
+    hint?: string; // Password hint (if enabled)
+    warnings?: CoreWSExternalWarning[];
+};
+
+/**
+ * Params of core_my_view_page WS.
+ */
+type CoreMyViewPageWSParams = {
+    page: 'my' | 'dashboard'; // My page to trigger a view event.
 };

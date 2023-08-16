@@ -12,14 +12,14 @@ module.exports = {
     transform: {
         '^.+\\.(ts|html)$': 'ts-jest',
     },
-    transformIgnorePatterns: ['node_modules/(?!@ionic-native|@ionic)'],
+    transformIgnorePatterns: ['node_modules/(?!@ionic-native|@ionic|@moodlehq/ionic-native-push)'],
     moduleNameMapper: {
         ...pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/src/' }),
         '^!raw-loader!.*': 'jest-raw-loader',
     },
     globals: {
         'ts-jest': {
-            tsConfig: './tsconfig.test.json',
+            tsconfig: './tsconfig.test.json',
         },
     },
 };

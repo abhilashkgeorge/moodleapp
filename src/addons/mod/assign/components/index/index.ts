@@ -14,6 +14,7 @@
 
 import { Component, Optional, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { Params } from '@angular/router';
+import { CoreError } from '@classes/errors/error';
 import { CoreSite } from '@classes/site';
 import { CoreCourseModuleMainActivityComponent } from '@features/course/classes/main-activity-component';
 import { CoreCourseContentsPage } from '@features/course/pages/contents/contents';
@@ -56,7 +57,7 @@ export class AddonModAssignIndexComponent extends CoreCourseModuleMainActivityCo
    @ViewChild(AddonModAssignSubmissionComponent) submissionComponent?: AddonModAssignSubmissionComponent;
 
     component = AddonModAssignProvider.COMPONENT;
-    moduleName = 'assign';
+    pluginName = 'assign';
 
     assign?: AddonModAssignAssign; // The assign object.
     canViewAllSubmissions = false; // Whether the user can view all submissions.
@@ -229,14 +230,20 @@ export class AddonModAssignIndexComponent extends CoreCourseModuleMainActivityCo
             return; // Shouldn't happen.
         }
 
-        await AddonModAssign.logView(this.assign.id, this.assign.name);
+        await CoreUtils.ignoreErrors(AddonModAssign.logView(this.assign.id));
+
+        this.analyticsLogEvent('mod_assign_view_assign');
 
         if (this.canViewAllSubmissions) {
             // User can see all submissions, log grading view.
-            CoreUtils.ignoreErrors(AddonModAssign.logGradingView(this.assign.id, this.assign.name));
+            await CoreUtils.ignoreErrors(AddonModAssign.logGradingView(this.assign.id));
+
+            this.analyticsLogEvent('mod_assign_view_grading_table', { sendUrl: false });
         } else if (this.canViewOwnSubmission) {
             // User can only see their own submission, log view the user submission.
-            CoreUtils.ignoreErrors(AddonModAssign.logSubmissionView(this.assign.id, this.assign.name));
+            await CoreUtils.ignoreErrors(AddonModAssign.logSubmissionView(this.assign.id));
+
+            this.analyticsLogEvent('mod_assign_view_submission_status', { sendUrl: false });
         }
     }
 
@@ -314,11 +321,7 @@ export class AddonModAssignIndexComponent extends CoreCourseModuleMainActivityCo
     /**
      * @inheritdoc
      */
-    protected hasSyncSucceed(result?: AddonModAssignSyncResult): boolean {
-        if (!result) {
-            return false;
-        }
-
+    protected hasSyncSucceed(result: AddonModAssignSyncResult): boolean {
         if (result.updated) {
             this.submissionComponent?.invalidateAndRefresh(false);
         }
@@ -375,7 +378,7 @@ export class AddonModAssignIndexComponent extends CoreCourseModuleMainActivityCo
 
         if (syncEventData.warnings && syncEventData.warnings.length) {
             // Show warnings.
-            CoreDomUtils.showErrorModal(syncEventData.warnings[0]);
+            CoreDomUtils.showAlert(undefined, syncEventData.warnings[0]);
         }
 
         return true;
@@ -384,9 +387,9 @@ export class AddonModAssignIndexComponent extends CoreCourseModuleMainActivityCo
     /**
      * @inheritdoc
      */
-    protected async sync(): Promise<AddonModAssignSyncResult | void> {
+    protected async sync(): Promise<AddonModAssignSyncResult> {
         if (!this.assign) {
-            return;
+            throw new CoreError('Cannot sync without a assign.');
         }
 
         return AddonModAssignSync.syncAssign(this.assign.id);

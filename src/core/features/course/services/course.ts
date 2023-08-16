@@ -33,11 +33,11 @@ import { CoreCourseOffline } from './course-offline';
 import { CoreError } from '@classes/errors/error';
 import {
     CoreCourseAnyCourseData,
+    CoreCourses,
     CoreCoursesProvider,
 } from '../../courses/services/courses';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreWSError } from '@classes/errors/wserror';
-import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
 import { CoreCourseHelper, CoreCourseModuleData, CoreCourseModuleCompletionData } from './course-helper';
 import { CoreCourseFormatDelegate } from './format-delegate';
 import { CoreCronDelegate } from '@services/cron';
@@ -248,6 +248,28 @@ export class CoreCourseProvider {
     isIncompleteAutomaticCompletion(completion: CoreCourseModuleCompletionData): boolean {
         return completion.tracking === CoreCourseModuleCompletionTracking.COMPLETION_TRACKING_AUTOMATIC &&
             completion.state === CoreCourseModuleCompletionStatus.COMPLETION_INCOMPLETE;
+    }
+
+    /**
+     * Check whether a course has indentation enabled.
+     *
+     * @param site Site.
+     * @param courseId Course id.
+     * @returns Whether indentation is enabled.
+     */
+    async isCourseIndentationEnabled(site: CoreSite, courseId: number): Promise<boolean> {
+        if (!site.isVersionGreaterEqualThan('4.0')) {
+            return false;
+        }
+
+        const course = await CoreCourses.getCourseByField('id', courseId, site.id);
+        const formatOptions = CoreUtils.objectToKeyValueMap<{ indentation?: string }>(
+            course.courseformatoptions ?? [],
+            'name',
+            'value',
+        );
+
+        return formatOptions.indentation === '1';
     }
 
     /**
@@ -682,6 +704,7 @@ export class CoreCourseProvider {
             course: courseId,
             section: sectionId,
             completiondata: completionData,
+            availabilityinfo: this.treatAvailablityInfo(module.availabilityinfo),
         };
     }
 
@@ -976,6 +999,7 @@ export class CoreCourseProvider {
                     // Add course to all modules.
                     return sections.map((section) => ({
                         ...section,
+                        availabilityinfo: this.treatAvailablityInfo(section.availabilityinfo),
                         modules: section.modules.map((module) => this.addAdditionalModuleData(module, courseId, section.id)),
                     }));
                 }),
@@ -1168,22 +1192,19 @@ export class CoreCourseProvider {
      * @param courseId Course ID.
      * @param sectionNumber Section number.
      * @param siteId Site ID. If not defined, current site.
-     * @param name Name of the course.
      * @returns Promise resolved when the WS call is successful.
      */
-    async logView(courseId: number, sectionNumber?: number, siteId?: string, name?: string): Promise<void> {
+    async logView(courseId: number, sectionNumber?: number, siteId?: string): Promise<void> {
         const params: CoreCourseViewCourseWSParams = {
             courseid: courseId,
         };
-        const wsName = 'core_course_view_course';
 
         if (sectionNumber !== undefined) {
             params.sectionnumber = sectionNumber;
         }
 
         const site = await CoreSites.getSite(siteId);
-        CorePushNotifications.logViewEvent(courseId, name, 'course', wsName, { sectionnumber: sectionNumber }, siteId);
-        const response: CoreStatusWithWarningsWSResponse = await site.write(wsName, params);
+        const response: CoreStatusWithWarningsWSResponse = await site.write('core_course_view_course', params);
 
         if (!response.status) {
             throw Error('WS core_course_view_course failed.');
@@ -1274,9 +1295,9 @@ export class CoreCourseProvider {
         if (!result.status) {
             if (result.warnings && result.warnings.length) {
                 throw new CoreWSError(result.warnings[0]);
-            } else {
-                throw new CoreError('Cannot change completion.');
             }
+
+            throw new CoreError('Cannot change completion.');
         }
 
         return result;
@@ -1509,17 +1530,17 @@ export class CoreCourseProvider {
      * Translate a module name to current language.
      *
      * @param moduleName The module name.
+     * @param fallback Fallback text to use if not translated. Will use moduleName otherwise.
+     *
      * @returns Translated name.
      */
-    translateModuleName(moduleName: string): string {
-        if (this.CORE_MODULES.indexOf(moduleName) < 0) {
-            moduleName = 'external-tool';
-        }
-
+    translateModuleName(moduleName: string, fallback?: string): string {
         const langKey = 'core.mod_' + moduleName;
         const translated = Translate.instant(langKey);
 
-        return translated !== langKey ? translated : moduleName;
+        return translated !== langKey ?
+            translated :
+            (fallback || moduleName);
     }
 
     /**
@@ -1534,6 +1555,21 @@ export class CoreCourseProvider {
             courseId: courseId,
             status: status,
         }, siteId);
+    }
+
+    /**
+     * Treat availability info HTML.
+     *
+     * @param availabilityInfo HTML to treat.
+     * @returns Treated HTML.
+     */
+    protected treatAvailablityInfo(availabilityInfo?: string): string | undefined {
+        if (!availabilityInfo) {
+            return availabilityInfo;
+        }
+
+        // Remove "Show more" option in 4.2 or older sites.
+        return CoreDomUtils.removeElementFromHtml(availabilityInfo, 'li[data-action="showmore"]');
     }
 
 }

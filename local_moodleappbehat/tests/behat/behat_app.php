@@ -44,27 +44,20 @@ class behat_app extends behat_app_helper {
         ],
     ];
 
-    protected $windowsize = '360x720';
+    protected $featurepath = '';
 
     /**
      * @BeforeScenario
      */
     public function before_scenario(ScenarioScope $scope) {
-        if (!$scope->getFeature()->hasTag('app')) {
+        $feature = $scope->getFeature();
+
+        if (!$feature->hasTag('app')) {
             return;
         }
 
-        global $CFG;
-
-        $performanceLogs = $CFG->behat_profiles['default']['capabilities']['extra_capabilities']['goog:loggingPrefs']['performance'] ?? null;
-
-        if ($performanceLogs !== 'ALL') {
-            return;
-        }
-
-        // Enable DB Logging only for app tests with performance logs activated.
-        $this->getSession()->visit($this->get_app_url() . '/assets/env.json');
-        $this->execute_script("document.cookie = 'MoodleAppDBLoggingEnabled=true;path=/';");
+        $this->featurepath = dirname($feature->getFile());
+        $this->configure_performance_logs();
     }
 
     /**
@@ -87,6 +80,23 @@ class behat_app extends behat_app_helper {
         }
 
         $this->enter_site();
+    }
+
+    /**
+     * Configure performance logs.
+     */
+    protected function configure_performance_logs() {
+        global $CFG;
+
+        $performanceLogs = $CFG->behat_profiles['default']['capabilities']['extra_capabilities']['goog:loggingPrefs']['performance'] ?? null;
+
+        if ($performanceLogs !== 'ALL') {
+            return;
+        }
+
+        // Enable DB Logging only for app tests with performance logs activated.
+        $this->getSession()->visit($this->get_app_url() . '/assets/env.json');
+        $this->execute_script("document.cookie = 'MoodleAppDBLoggingEnabled=true;path=/';");
     }
 
     /**
@@ -257,6 +267,26 @@ class behat_app extends behat_app_helper {
 
         // Wait swipe animation to finish.
         $this->getSession()->wait(300);
+    }
+
+    /**
+     * Wait for a BBB room to start.
+     *
+     * @When I wait for the BigBlueButton room to start
+     */
+    public function i_wait_bbb_room_to_start() {
+        $windowNames = $this->getSession()->getWindowNames();
+
+        $this->getSession()->switchToWindow(array_pop($windowNames));
+        $this->spin(function($context) {
+            $joinmodal = $context->getSession()->getPage()->find('css', 'div[role="dialog"][aria-label="How would you like to join the audio?"]');
+
+            if ($joinmodal) {
+                return true;
+            }
+
+            throw new DriverException('BBB room not started');
+        }, false, 30);
     }
 
     /**
@@ -636,24 +666,46 @@ class behat_app extends behat_app_helper {
     /**
      * Performs a pull to refresh gesture.
      *
-     * @When I pull to refresh in the app
+     * @When /^I pull to refresh (?:until I find (".+") )?in the app$/
      * @throws DriverException If the gesture is not available
      */
-    public function i_pull_to_refresh_in_the_app() {
-        $this->spin(function() {
-            $result = $this->runtime_js('pullToRefresh()');
+    public function i_pull_to_refresh_in_the_app(?string $locator = null) {
+        $timeout = 0;
+        $startTime = time();
 
-            if ($result !== 'OK') {
-                throw new DriverException('Error pulling to refresh - ' . $result);
+        if (!is_null($locator)) {
+            $timeout = 60;
+            $locator = $this->parse_element_locator($locator);
+        }
+
+        do {
+            $this->spin(function() {
+                $result = $this->runtime_js('pullToRefresh()');
+
+                if ($result !== 'OK') {
+                    throw new DriverException('Error pulling to refresh - ' . $result);
+                }
+
+                return true;
+            });
+
+            $this->wait_for_pending_js();
+
+            // Wait for UI to settle after refreshing.
+            $this->getSession()->wait(300);
+
+            if (is_null($locator)) {
+                return;
             }
 
-            return true;
-        });
+            $result = $this->runtime_js("find($locator)");
 
-        $this->wait_for_pending_js();
+            if ($result === 'OK') {
+                return;
+            }
+        } while ($timeout > (time() - $startTime));
 
-        // Wait for UI to settle after refreshing.
-        $this->getSession()->wait(300);
+        throw new DriverException('Error finding element after PTR - ' . $result);
     }
 
     /**
@@ -754,7 +806,7 @@ class behat_app extends behat_app_helper {
             $result = $this->runtime_js("setField('$field', '$value')");
 
             if ($result !== 'OK') {
-                throw new DriverException('Error setting field - ' . $result);
+                throw new DriverException('Error setting field "' . $field . '" - ' . $result);
             }
 
             return true;
@@ -776,6 +828,35 @@ class behat_app extends behat_app_helper {
         foreach ($datahash as $locator => $value) {
             $this->i_set_the_field_in_the_app($locator, $value);
         }
+    }
+
+    /**
+     * Uploads a file to a file input, the file path should be relative to a fixtures folder next to the feature file.
+     * The ìnput locator can match a container with a file input inside, it doesn't have to be the input itself.
+     *
+     * @Given /^I upload "((?:[^"]|\\")+)" to (".+") in the app$/
+     * @param string $filename
+     * @param string $inputlocator
+     */
+    public function i_upload_a_file_in_the_app(string $filename, string $inputlocator) {
+        $filepath = str_replace('/', DIRECTORY_SEPARATOR, "{$this->featurepath}/fixtures/$filename");
+        $inputlocator = $this->parse_element_locator($inputlocator);
+
+        $id = $this->spin(function() use ($inputlocator) {
+            $result = $this->runtime_js("getFileInputId($inputlocator)");
+
+            if (str_starts_with($result, 'ERROR')) {
+                throw new DriverException('Error finding input - ' . $result);
+            }
+
+            return $result;
+        });
+
+        $this->wait_for_pending_js();
+
+        $fileinput = $this ->getSession()->getPage()->findById($id);
+
+        $fileinput->attachFile($filepath);
     }
 
     /**
@@ -1061,6 +1142,17 @@ class behat_app extends behat_app_helper {
         ]);
 
         $this->zone_js("navigator.navigateToSitePath('/calendar/index', $options)");
+    }
+
+    /**
+     * Change the viewport size in the browser running the Moodle App.
+     *
+     * @Given /^I change viewport size to "(?P<width>\d+)x(?P<height>\d+)" in the app$/
+     * @param int $width Width
+     * @param int $height Height
+     */
+    public function i_change_viewport_size_in_the_app(int $width, int $height) {
+        $this->resize_app_window($width, $height);
     }
 
 }

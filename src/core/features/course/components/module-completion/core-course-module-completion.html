@@ -7,24 +7,27 @@
                 <ng-container *ngFor="let rule of details">
                     <ion-chip *ngIf="rule.statuscomplete" color="success" role="listitem" [attr.aria-label]="rule.accessibleDescription"
                         class="completioninfo completion_complete">
-                        <ion-icon name="fas-check" [attr.aria-label]="'core.course.completion_automatic:done' | translate "></ion-icon>
+                        <ion-icon name="fas-check" aria-hidden="true"></ion-icon>
                         <ion-label>
+                            <strong>{{ 'core.course.completion_automatic:done' | translate }}</strong>
                             {{ rule.rulevalue.description }}
                         </ion-label>
                     </ion-chip>
 
                     <ion-chip *ngIf="rule.statuscompletefail" color="danger" role="listitem" [attr.aria-label]="rule.accessibleDescription"
                         class="completioninfo completion_fail">
-                        <ion-icon name="fas-times" [attr.aria-label]="'core.course.completion_automatic:failed' | translate "></ion-icon>
+                        <ion-icon name="fas-xmark" aria-hidden="true"></ion-icon>
                         <ion-label>
+                            <strong>{{ 'core.course.completion_automatic:failed' | translate }}</strong>
                             {{ rule.rulevalue.description }}
                         </ion-label>
                     </ion-chip>
 
                     <ion-chip *ngIf="rule.statusincomplete" color="secondary" role="listitem" [attr.aria-label]="rule.accessibleDescription"
                         class="completioninfo completion_incomplete">
-                        <ion-icon name="fas-edit" [attr.aria-label]="'core.course.completion_automatic:todo' | translate "></ion-icon>
+                        <ion-icon name="fas-pen-to-square" aria-hidden="true"></ion-icon>
                         <ion-label>
+                            <strong>{{ 'core.course.completion_automatic:todo' | translate }}</strong>
                             {{ rule.rulevalue.description }}
                         </ion-label>
                     </ion-chip>
@@ -33,8 +36,9 @@
 
             <ng-container *ngIf="!completion.istrackeduser">
                 <ion-chip *ngFor="let rule of details" role="listitem" class="core-module-completion-todo">
-                    <ion-icon name="fas-edit" [attr.aria-label]="'core.course.completion_automatic:todo' | translate "></ion-icon>
+                    <ion-icon name="fas-pen-to-square" aria-hidden="true"></ion-icon>
                     <ion-label>
+                        <strong>{{ 'core.course.completion_automatic:todo' | translate }}</strong>
                         {{ rule.rulevalue.description }}
                     </ion-label>
                 </ion-chip>
@@ -43,7 +47,7 @@
 
         <ng-container *ngIf="mode == 'basic' && completion.istrackeduser">
             <ion-chip class="completioninfo completion_incomplete" *ngIf="completionStatus === 0" color="secondary">
-                <ion-icon name="fas-edit" aria-hidden="true"></ion-icon>
+                <ion-icon name="fas-pen-to-square" aria-hidden="true"></ion-icon>
                 <ion-label>
                     {{ 'core.course.todo' | translate }}
                 </ion-label>
@@ -53,7 +57,7 @@
                 <ion-label>{{'core.course.done' | translate }}</ion-label>
             </ion-chip>
             <ion-chip class="completioninfo completion_fail" *ngIf="completionStatus === 3" color="danger">
-                <ion-icon name="fas-times" aria-hidden="true"></ion-icon>
+                <ion-icon name="fas-xmark" aria-hidden="true"></ion-icon>
                 <ion-label>{{'core.course.failed' | translate }}</ion-label>
             </ion-chip>
         </ng-container>

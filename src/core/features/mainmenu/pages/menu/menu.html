@@ -17,14 +17,14 @@
             </span>
         </ion-tab-button>
 
-        <ion-tab-button (keydown)="tabAction.keyDown(morePageName, $event)" (keyup)="tabAction.keyUp(morePageName, $event)"
+        <!-- <ion-tab-button (keydown)="tabAction.keyDown(morePageName, $event)" (keyup)="tabAction.keyUp(morePageName, $event)"
             [hidden]="!loaded" [tab]="morePageName" layout="label-hide" [tabindex]="selectedTab == morePageName ? 0 : -1"
             [attr.aria-controls]="morePageName">
             <ion-icon class="core-tab-icon" name="ellipsis-horizontal" aria-hidden="true"></ion-icon>
             <ion-label aria-hidden="true">{{ 'core.more' | translate }}</ion-label>
             <span class="sr-only">{{ 'core.more' | translate }}</span>
             <ion-icon *ngIf="moreBadge" class="core-tab-badge" name="fas-circle" aria-hidden="true"></ion-icon>
-        </ion-tab-button>
+        </ion-tab-button> -->
     </ion-tab-bar>
 </ion-tabs>
 <div class="core-network-message" [hidden]="!showTabs">

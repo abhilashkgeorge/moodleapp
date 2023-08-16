@@ -3,7 +3,7 @@
         <!-- Time limit is over. -->
         <ion-card *ngIf="timeLimitFinished" class="core-danger-card">
             <ion-item class="ion-text-wrap">
-                <ion-icon name="fas-exclamation-triangle" slot="start" aria-hidden="true"></ion-icon>
+                <ion-icon name="fas-triangle-exclamation" slot="start" aria-hidden="true"></ion-icon>
                 <ion-label>
                     <p>{{ 'addon.mod_assign.caneditsubmission' | translate }}</p>
                 </ion-label>
@@ -200,13 +200,22 @@
                                         {{ 'addon.mod_assign.editsubmission' | translate }}
                                     </ion-button>
                                 </ng-container>
-                                <ion-item class="core-danger-item ion-text-wrap" *ngIf="(unsupportedEditPlugins
-                                    && unsupportedEditPlugins.length && !showErrorStatementEdit)|| showErrorStatementEdit">
+                                <ion-item class="core-danger-item ion-text-wrap"
+                                    *ngIf="(unsupportedEditPlugins.length && !showErrorStatementEdit)|| showErrorStatementEdit">
                                     <ion-label>
                                         <ng-container
                                             *ngIf="unsupportedEditPlugins && unsupportedEditPlugins.length && !showErrorStatementEdit">
-                                            <p>{{ 'addon.mod_assign.erroreditpluginsnotsupported' | translate }}</p>
-                                            <p *ngFor="let name of unsupportedEditPlugins">{{ name }}</p>
+                                            <p class="ion-padding-horizontal">
+                                                {{ 'addon.mod_assign.erroreditpluginsnotsupported' | translate }}</p>
+                                            <ul>
+                                                <li *ngFor="let name of unsupportedEditPlugins">{{ name }}</li>
+                                            </ul>
+                                            <ion-button expand="block" *ngIf="submissionUrl" [href]="submissionUrl" core-link
+                                                [showBrowserWarning]="false">
+                                                {{ 'core.openinbrowser' | translate }}
+                                                <ion-icon name="fas-up-right-from-square" slot="end" aria-hidden="true"></ion-icon>
+                                            </ion-button>
+
                                         </ng-container>
                                         <ng-container *ngIf="showErrorStatementEdit">
                                             <p>{{ 'addon.mod_assign.cannoteditduetostatementsubmission' | translate }}</p>
@@ -264,7 +273,7 @@
                         </ion-label>
                         <ion-button slot="end" *ngIf="feedback!.advancedgrade" (click)="showAdvancedGrade()"
                             [attr.aria-label]="'core.showadvanced' |translate">
-                            <ion-icon name="fas-search" slot="icon-only" aria-hidden="true"></ion-icon>
+                            <ion-icon name="fas-magnifying-glass" slot="icon-only" aria-hidden="true"></ion-icon>
                         </ion-button>
                     </ion-item>
 
@@ -287,6 +296,7 @@
                                 <p class="item-heading">{{ 'addon.mod_assign.grade' | translate }}</p>
                             </ion-label>
                             <ion-select [(ngModel)]="grade.grade" interface="action-sheet" [disabled]="grade.disabled"
+                                [cancelText]="'core.cancel' | translate"
                                 [interfaceOptions]="{header: 'addon.mod_assign.grade' | translate}">
                                 <ion-select-option *ngFor="let grade of grade.scale" [value]="grade.value">
                                     {{grade.label}}
@@ -300,12 +310,22 @@
                                 <p class="item-heading">{{ outcome.name }}</p>
                             </ion-label>
                             <ion-select *ngIf="canSaveGrades && outcome.itemNumber" [(ngModel)]="outcome.selectedId"
-                                interface="action-sheet" [disabled]="gradeInfo!.disabled" [interfaceOptions]="{header: outcome.name }">
+                                interface="action-sheet" [disabled]="gradeInfo!.disabled" [cancelText]="'core.cancel' | translate"
+                                [interfaceOptions]="{header: outcome.name }">
                                 <ion-select-option *ngFor="let grade of outcome.options" [value]="grade.value">
                                     {{grade.label}}
                                 </ion-select-option>
                             </ion-select>
                             <p *ngIf="!canSaveGrades || !outcome.itemNumber">{{ outcome.selected }}</p>
+                        </ion-item>
+
+                        <!-- Assign grade if it wasn't released to gradebook. -->
+                        <ion-item class="ion-text-wrap" *ngIf="gradeInfo && grade.unreleasedGrade !== undefined">
+                            <ion-label>
+                                <p class="item-heading">{{ 'addon.mod_assign.currentassigngrade' | translate }}</p>
+                                <p *ngIf="grade.method != 'simple' || !grade.scale">{{ grade.unreleasedGrade}} / {{ gradeInfo.grade }}</p>
+                                <p *ngIf="grade.method == 'simple' && grade.scale">{{ grade.unreleasedGrade }}</p>
+                            </ion-label>
                         </ion-item>
 
                         <!-- Gradebook grade for simple grading. -->
@@ -393,12 +413,12 @@
                     <!-- Warning message if cannot save grades. -->
                     <ion-card *ngIf="isGrading && !canSaveGrades" class="core-warning-card">
                         <ion-item>
-                            <ion-icon name="fas-exclamation-triangle" slot="start" aria-hidden="true"></ion-icon>
+                            <ion-icon name="fas-triangle-exclamation" slot="start" aria-hidden="true"></ion-icon>
                             <ion-label>
                                 <p>{{ 'addon.mod_assign.cannotgradefromapp' | translate }}</p>
                                 <ion-button expand="block" *ngIf="gradeUrl" [href]="gradeUrl" core-link [showBrowserWarning]="false">
                                     {{ 'core.openinbrowser' | translate }}
-                                    <ion-icon name="fas-external-link-alt" slot="end" aria-hidden="true"></ion-icon>
+                                    <ion-icon name="fas-up-right-from-square" slot="end" aria-hidden="true"></ion-icon>
                                 </ion-button>
                             </ion-label>
                         </ion-item>
@@ -412,8 +432,10 @@
 <!-- Template to render some data regarding the submission status. -->
 <ng-template #submissionStatus>
     <ng-container *ngIf="assign && assign!.teamsubmission && lastAttempt">
-        <p *ngIf="lastAttempt!.submissiongroup && lastAttempt!.submissiongroupname" class="core-groupname">
-            {{lastAttempt!.submissiongroupname}}
+        <p *ngIf="lastAttempt.submissiongroup && lastAttempt.submissiongroupname" class="core-groupname">
+            <core-format-text [text]="lastAttempt.submissiongroupname" contextLevel="course" [contextInstanceId]="courseId"
+                [wsNotFiltered]="true">
+            </core-format-text>
         </p>
         <ng-container *ngIf="assign!.preventsubmissionnotingroup &&
             !lastAttempt!.submissiongroup &&

@@ -120,15 +120,15 @@ body {
 }
 
 // Correctly inherit ion-text-wrap onto labels.
-.item ion-label core-format-text > *,
-.fake-ion-item core-format-text > * {
+.item ion-label core-format-text > *:not(pre),
+.fake-ion-item core-format-text > *:not(pre) {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.item.ion-text-wrap > ion-label core-format-text > *,
-.fake-ion-item.ion-text-wrap core-format-text > * {
+.item.ion-text-wrap > ion-label core-format-text > *:not(pre),
+.fake-ion-item.ion-text-wrap core-format-text > *:not(pre) {
     white-space: normal;
     overflow: inherit;
 }
@@ -251,10 +251,6 @@ ion-header {
 
 ion-tabs.hide-header ion-header {
     display: none;
-}
-
-ion-footer ion-toolbar.ion-color-contrast {
-    background-color: var(--contrast-background);
 }
 
 ion-footer {
@@ -451,8 +447,8 @@ div.core-iframe-network-error {
         width: 50%;
         height: 50%;
         background-color: var(--danger);
-        -webkit-mask: url("/assets/fonts/font-awesome/solid/exclamation-triangle.svg") no-repeat 50% 50%;
-        mask: url("/assets/fonts/font-awesome/solid/exclamation-triangle.svg") no-repeat 50% 50%;
+        -webkit-mask: url("/assets/fonts/font-awesome/solid/triangle-exclamation.svg") no-repeat 50% 50%;
+        mask: url("/assets/fonts/font-awesome/solid/triangle-exclamation.svg") no-repeat 50% 50%;
     }
 }
 
@@ -520,6 +516,12 @@ ion-alert {
     .alert-message {
         user-select: text;
         flex-shrink: 0;
+
+        ion-card {
+            margin: 0;
+            margin-top: 10px;
+        }
+
     }
 }
 
@@ -733,6 +735,21 @@ body.core-iframe-fullscreen ion-router-outlet {
     }
 }
 
+.core-password-modal {
+    --border-radius: var(--medium-radius);
+    --min-width: auto;
+    --min-height: 300px;
+    --width: 384px;
+    --height: auto;
+
+    form {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        justify-content: space-between;
+    }
+}
+
 // Hidden submit button.
 .core-submit-hidden-enter {
     position: absolute;
@@ -875,7 +892,7 @@ img.large-avatar,
     max-width: var(--core-large-avatar-size);
     max-height: var(--core-large-avatar-size);
     margin-bottom: 10px;
-    border-radius : 50%;
+    border-radius: 50%;
     padding: 4px;
     border: 1px solid var(--stroke);
     background-color: transparent;
@@ -1601,9 +1618,6 @@ ion-alert:focus-visible,
 ion-popover:focus-visible,
 ion-modal:focus-visible {
     box-shadow: none;
-}
-
-ion-loading:focus-visible {
     border-radius: 0;
 }
 
@@ -1812,4 +1826,22 @@ ion-modal.core-modal-no-background {
     ion-backdrop {
         display: none;
     }
+}
+
+/*
+* This is to solve popver issue in chrome 114
+* For more info see: https://github.com/ionic-team/ionic-framework/issues/27599
+*/
+[popover].popover-viewport {
+    display: initial;
+    position: initial;
+    margin: initial;
+    border: initial;
+    background: initial;
+    padding: initial;
+    width: initial;
+    height: initial;
+    overflow: initial;
+    inset: initial;
+    color: initial;
 }

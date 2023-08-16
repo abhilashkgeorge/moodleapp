@@ -111,10 +111,10 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
                         label: 'core.courses.allowguests',
                         icon: 'fas-unlock',
                     });
-                } else if (instance === 'paypal') {
+                } else if (instance === 'paypal' || instance === 'fee') {
                     this.enrolmentIcons.push({
                         label: 'core.courses.otherenrolments',
-                        icon: 'fas-external-link-alt',
+                        icon: 'fas-up-right-from-square',
                     });
                 }
             });
@@ -126,6 +126,16 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
                 });
             }
         }
+    }
+
+    /**
+     * Removes the course image set because it cannot be loaded and set the fallback icon color.
+     */
+    loadFallbackCourseIcon(): void {
+        this.course.courseimage = undefined;
+
+        // Set the color because it won't be set at this point.
+        this.setCourseColor();
     }
 
     /**
@@ -166,7 +176,7 @@ export class CoreCoursesCourseListItemComponent implements OnInit, OnDestroy, On
      */
     openCourse(): void {
         if (this.isEnrolled) {
-            CoreCourseHelper.openCourse(this.course);
+            CoreCourseHelper.openCourse(this.course, { params: { isGuest: false } });
         } else {
             CoreNavigator.navigateToSitePath(
                 `/course/${this.course.id}/summary`,

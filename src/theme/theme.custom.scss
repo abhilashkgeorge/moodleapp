@@ -10,6 +10,64 @@
  */
 html {
 
+        /* Background */
+    ion-header ion-toolbar {
+        --core-header-toolbar-background: #fd0100;
+    }
+
+    /* Bottom border */
+    ion-header ion-toolbar {
+        --core-header-toolbar-border-width: 0px; /* Use 0 to disable it */
+        --core-header-toolbar-border-color: green;
+    }
+
+    /* Text and buttons */
+    ion-header ion-toolbar {
+        --core-header-toolbar-color: blue;
+    }
+
+    // ion-header ion-toolbar.in-toolbar h1,
+    // ion-header ion-toolbar.in-toolbar h2 {
+    //     font-weight: normal;
+    // }
+
+    collapsible-header-collapsed ion-toolbar {
+        background-color: #fd0100;
+    }
+
+    h1 {
+        color: white;
+    }
+
+    ion-tab-bar.mainmenu-tabs {
+        /* Background */
+        --core-bottom-tabs-background:  #fd0100;
+        --core-bottom-tabs-background-selected: #fd0100;
+
+        /* Tab icons */
+        --core-bottom-tabs-color: white;
+
+        /* Selected tab icon */
+        --core-bottom-tabs-color-selected: black;
+
+        // /* Badges */
+        // --core-bottom-tabs-badge-text-color: black;
+        // --core-bottom-tabs-badge-color: white;
+    }
+
+    body:not(.core-iframe-fullscreen) .collapsible-header-page:not(.collapsible-header-page-is-collapsed) .collapsible-header-collapsed ion-toolbar {
+        --background: #fd0100 !important; /* Use !important to override */
+        --core-header-buttons-background: #fd0100;
+    }
+
+    ion-header ion-toolbar ion-back-button, ion-header ion-toolbar .in-toolbar.button-clear, ion-header ion-toolbar .in-toolbar.button-solid, ion-header ion-toolbar .button.button-clear, ion-header ion-toolbar .button.button-solid {
+        --color: var(--core-header-buttons-color);
+        --background: #fd0100;
+        --ion-toolbar-color: var(--core-header-buttons-color);
+        --border-radius: var(--huge-radius);
+        --primary: var(--core-header-buttons-color);
+    }
+
 }
 
 /*

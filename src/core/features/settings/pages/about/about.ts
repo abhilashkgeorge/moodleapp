@@ -32,10 +32,11 @@ export class CoreSettingsAboutPage {
     appName: string;
     versionName: string;
     privacyPolicy: string;
-    feedbackFormUrl = CoreConstants.CONFIG.feedbackFormUrl ?? 'https://abhilashkgeorge.com';
-    a11yStatement = CoreConstants.CONFIG.a11yStatement ?? 'https://eduskills.org.in/accessibility-statement/';
+    feedbackFormUrl = CoreConstants.CONFIG.feedbackFormUrl ?? 'https://feedback.moodle.org/mobileapp';
+    a11yStatement = CoreConstants.CONFIG.a11yStatement ?? 'https://apps.moodle.com/admin/tool/policy/view.php?versionid=5';
     currentSite?: CoreSite;
     showSurvey: boolean | undefined = false;
+    legalDisclaimer = CoreConstants.CONFIG.legalDisclaimer;
 
     constructor() {
         this.currentSite = CoreSites.getCurrentSite();

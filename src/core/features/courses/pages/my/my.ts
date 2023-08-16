@@ -29,6 +29,9 @@ import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
 import { Subscription } from 'rxjs';
 import { CoreCourses } from '../../services/courses';
+import { CoreTime } from '@singletons/time';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { Translate } from '@singletons';
 
 /**
  * Page that shows a my courses.
@@ -42,7 +45,7 @@ import { CoreCourses } from '../../services/courses';
         useClass: PageLoadsManager,
     }],
 })
-export class CoreCoursesMyCoursesPage implements OnInit, OnDestroy, AsyncDirective {
+export class CoreCoursesMyPage implements OnInit, OnDestroy, AsyncDirective {
 
     @ViewChild(CoreBlockComponent) block!: CoreBlockComponent;
 
@@ -58,12 +61,13 @@ export class CoreCoursesMyCoursesPage implements OnInit, OnDestroy, AsyncDirecti
     protected updateSiteObserver: CoreEventObserver;
     protected onReadyPromise = new CorePromisedValue<void>();
     protected loadsManagerSubscription: Subscription;
+    protected logView: () => void;
 
     constructor(protected loadsManager: PageLoadsManager) {
         // Refresh the enabled flags if site is updated.
-        this.updateSiteObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, () => {
+        this.updateSiteObserver = CoreEvents.on(CoreEvents.SITE_UPDATED, async () => {
             this.downloadCoursesEnabled = !CoreCourses.isDownloadCoursesDisabledInSite();
-            this.loadSiteName();
+            await this.loadSiteName();
 
         }, CoreSites.getCurrentSiteId());
 
@@ -73,18 +77,30 @@ export class CoreCoursesMyCoursesPage implements OnInit, OnDestroy, AsyncDirecti
             this.loaded = false;
             this.loadContent();
         });
+
+        this.logView = CoreTime.once(async () => {
+            await CoreUtils.ignoreErrors(CoreCourses.logView('my'));
+
+            CoreAnalytics.logEvent({
+                type: CoreAnalyticsEventType.VIEW_ITEM,
+                ws: 'core_my_view_page',
+                name: Translate.instant('core.courses.mycourses'),
+                data: { category: 'course', page: 'my' },
+                url: '/my/courses.php',
+            });
+        });
     }
 
     /**
      * @inheritdoc
      */
-    ngOnInit(): void {
+    async ngOnInit(): Promise<void> {
         this.downloadCoursesEnabled = !CoreCourses.isDownloadCoursesDisabledInSite();
 
         const deepLinkManager = new CoreMainMenuDeepLinkManager();
         deepLinkManager.treatLink();
 
-        this.loadSiteName();
+        await this.loadSiteName();
 
         this.loadContent(true);
     }
@@ -138,13 +154,16 @@ export class CoreCoursesMyCoursesPage implements OnInit, OnDestroy, AsyncDirecti
 
         this.loaded = true;
         this.onReadyPromise.resolve();
+
+        this.logView();
     }
 
     /**
      * Load the site name.
      */
-    protected loadSiteName(): void {
-        this.siteName = CoreSites.getRequiredCurrentSite().getSiteName() || '';
+    protected async loadSiteName(): Promise<void> {
+        const site = CoreSites.getRequiredCurrentSite();
+        this.siteName = await site.getSiteName() || '';
     }
 
     /**

@@ -71,6 +71,15 @@ Feature: Test basic usage of one course in app
       | activity      | name                  | intro             | course | idnumber       | groupmode | section |
       | workshop      | Test workshop name    | Test workshop     | C1     | workshop       | 0         | 3       |
 
+    # TODO remove once MDL-77951 is resolved.
+    And I log in as "admin"
+    And I am on "Course 1" course homepage with editing mode on
+    And I open "Choice course 1" actions menu
+    And I click on "Move right" "link" in the "Choice course 1" activity
+    And I open "assignment" actions menu
+    And I click on "Move right" "link" in the "assignment" activity
+    And I log out
+
   Scenario: View course contents
     When I entered the course "Course 1" as "student1" in the app
     Then the header should be "Course 1" in the app
@@ -89,9 +98,9 @@ Feature: Test basic usage of one course in app
     And I should find "Test scorm name" in the app
     And I should find "Test workshop name" in the app
 
-    When I set "page-core-course-index .core-course-thumb" styles to "--course-color" "lightblue"
-    And I set "page-core-course-index .core-course-thumb" styles to "--course-color-tint" "white"
-    # Then the UI should match the snapshot
+    When I set "page-core-course-index .core-course-thumb" styles to "background" "lightblue"
+    And I set "page-core-course-index .core-course-thumb img" styles to "display" "none"
+    Then the UI should match the snapshot
 
     When I press "Choice course 1" in the app
     Then the header should be "Choice course 1" in the app
@@ -135,7 +144,6 @@ Feature: Test basic usage of one course in app
 
     When I press the back button in the app
     And I press "Test wiki name" in the app
-    And I press "OK" in the app
     Then the header should be "Test wiki name" in the app
 
     When I press the back button in the app
@@ -190,7 +198,6 @@ Feature: Test basic usage of one course in app
 
     When I press the back button in the app
     And I press "Test wiki name" in the app
-    And I press "OK" in the app
     Then the header should be "Test wiki name" in the app
 
     When I press the back button in the app
@@ -406,7 +413,8 @@ Feature: Test basic usage of one course in app
 
   @lms_from4.0
   Scenario: Self enrol
-    Given I log in as "teacher1"
+    Given the Moodle site is compatible with this feature
+    And I log in as "teacher1"
     And I add "Self enrolment" enrolment method in "Course 1" with:
       | Custom instance name | Student self enrolment |
     And I entered the app as "student2"
@@ -423,41 +431,6 @@ Feature: Test basic usage of one course in app
     And I should find "Test chat name" in the app
     And I should find "Web links" in the app
     And I should find "Test external name" in the app
-    And I should find "Test feedback name" in the app
-    And I should find "Test glossary" in the app
-    And I should find "Quiz 1" in the app
-    And I should find "Test survey name" in the app
-    And I should find "Test wiki name" in the app
-    And I should find "Test lesson name" in the app
-    And I should find "Test scorm name" in the app
-    And I should find "Test workshop name" in the app
-
-  @lms_from4.0
-  Scenario: Guest access
-    Given I entered the course "Course 1" as "teacher1" in the app
-    And I press "Course summary" in the app
-    And I press "Open in browser" in the app
-    And I switch to the browser tab opened by the app
-    And I log in as "teacher1"
-    And I click on "Participants" "link"
-    And I select "Enrolment methods" from the "jump" singleselect
-    And I click on "Enable" "icon" in the "Guest access" "table_row"
-    And I close the browser tab opened by the app
-    Given I entered the app as "student2"
-    When I press "Site home" in the app
-    And I press "Available courses" in the app
-    And I press "Course 1" in the app
-
-    Then I should find "Course summary" in the app
-    And I should find "Course" in the app
-
-    When I press "View course" "ion-button" in the app
-    Then the header should be "Course 1" in the app
-    And I should find "Choice course 1" in the app
-    And I should find "assignment" in the app
-    And I should find "Test forum name" in the app
-    And I should find "Test chat name" in the app
-    And I should find "Web links" in the app
     And I should find "Test feedback name" in the app
     And I should find "Test glossary" in the app
     And I should find "Quiz 1" in the app

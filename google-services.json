@@ -1,41 +1,34 @@
 {
   "project_info": {
-    "project_number": "305314197999",
-    "project_id": "eduskills-370dd",
-    "storage_bucket": "eduskills-370dd.appspot.com"
+    "project_number": "309224307453",
+    "project_id": "haldiram-42205",
+    "storage_bucket": "haldiram-42205.appspot.com"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:305314197999:android:c3e20decd8705b143fc61a",
+        "mobilesdk_app_id": "1:309224307453:android:d2ba05242d9f8e55535c94",
         "android_client_info": {
-          "package_name": "com.abhilashkgeorge.eduskills"
+          "package_name": "com.abhilashkgeorge.haldiram"
         }
       },
       "oauth_client": [
         {
-          "client_id": "305314197999-siabrkn8sg3k91m02oim6c15jv3nhjph.apps.googleusercontent.com",
+          "client_id": "309224307453-ehvnfhl1cvb08307b2nlhs7ut12jdgih.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBiBySwa4YaC6gAd2CARTXqbYx-gpMi-68"
+          "current_key": "AIzaSyCb9TuqiO5BzVQGzLL969G3OAwGRluujgw"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "305314197999-siabrkn8sg3k91m02oim6c15jv3nhjph.apps.googleusercontent.com",
+              "client_id": "309224307453-ehvnfhl1cvb08307b2nlhs7ut12jdgih.apps.googleusercontent.com",
               "client_type": 3
-            },
-            {
-              "client_id": "305314197999-nq7q8ggrh5fic789r4nsnsrv0t511drl.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.abhilashkgeorge.eduskills"
-              }
             }
           ]
         }

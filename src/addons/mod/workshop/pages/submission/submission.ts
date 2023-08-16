@@ -47,6 +47,8 @@ import {
 } from '../../services/workshop-helper';
 import { AddonModWorkshopOffline } from '../../services/workshop-offline';
 import { AddonModWorkshopSyncProvider, AddonModWorkshopAutoSyncData } from '../../services/workshop-sync';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { CoreTime } from '@singletons/time';
 
 /**
  * Page that displays a workshop submission.
@@ -102,7 +104,7 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
     protected obsAssessmentSaved: CoreEventObserver;
     protected syncObserver: CoreEventObserver;
     protected isDestroyed = false;
-    protected fetchSuccess = false;
+    protected logView: () => void;
 
     constructor(
         protected fb: FormBuilder,
@@ -125,6 +127,8 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
             // Update just when all database is synced.
             this.eventReceived(data);
         }, this.siteId);
+
+        this.logView = CoreTime.once(() => this.performLogView());
     }
 
     /**
@@ -254,7 +258,7 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
 
                     return;
                 }));
-            } else if (this.currentUserId == this.userId && this.assessmentId) {
+            } else if (this.currentUserId === this.userId && this.assessmentId) {
                 // Get new data, different that came from stateParams.
                 promises.push(AddonModWorkshop.getAssessment(this.workshopId, this.assessmentId, {
                     cmId: this.module.id,
@@ -268,7 +272,7 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
 
                     return;
                 }));
-            } else if (this.workshop.phase == AddonModWorkshopPhase.PHASE_CLOSED && this.userId == this.currentUserId) {
+            } else if (this.workshop.phase === AddonModWorkshopPhase.PHASE_CLOSED && this.userId === this.currentUserId) {
                 const assessments = await AddonModWorkshop.getSubmissionAssessments(this.workshopId, this.submissionId, {
                     cmId: this.module.id,
                 });
@@ -276,7 +280,7 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
                 this.submissionInfo.reviewedby = assessments.map((assessment) => this.parseAssessment(assessment));
             }
 
-            if (this.canAddFeedback || this.workshop.phase == AddonModWorkshopPhase.PHASE_CLOSED) {
+            if (this.canAddFeedback || this.workshop.phase === AddonModWorkshopPhase.PHASE_CLOSED) {
                 this.evaluate = {
                     published: this.submission.published,
                     text: this.submission.feedbackauthor || '',
@@ -284,54 +288,13 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
             }
 
             if (this.canAddFeedback) {
-
                 if (!this.isDestroyed) {
                     // Block the workshop.
                     CoreSync.blockOperation(this.component, this.workshopId);
                 }
 
-                const defaultGrade = Translate.instant('addon.mod_workshop.notoverridden');
-
-                promises.push(CoreGradesHelper.makeGradesMenu(this.workshop.grade || 0, undefined, defaultGrade, -1)
-                    .then(async (grades) => {
-                        this.evaluationGrades = grades;
-
-                        this.evaluate!.grade = {
-                            label: CoreGradesHelper.getGradeLabelFromValue(grades, this.submissionInfo.gradeover) ||
-                            defaultGrade,
-                            value: this.submissionInfo.gradeover || -1,
-                        };
-
-                        try {
-                            const offlineSubmission =
-                                await AddonModWorkshopOffline.getEvaluateSubmission(this.workshopId, this.submissionId);
-
-                            this.hasOffline = true;
-                            this.evaluate!.published = offlineSubmission.published;
-                            this.evaluate!.text = offlineSubmission.feedbacktext;
-                            this.evaluate!.grade = {
-                                label: CoreGradesHelper.getGradeLabelFromValue(
-                                    grades,
-                                    parseInt(offlineSubmission.gradeover, 10),
-                                ) || defaultGrade,
-                                value: offlineSubmission.gradeover || -1,
-                            };
-                        } catch {
-                            // Ignore errors.
-                            this.hasOffline = false;
-                        } finally {
-                            this.originalEvaluation.published = this.evaluate!.published;
-                            this.originalEvaluation.text = this.evaluate!.text;
-                            this.originalEvaluation.grade = this.evaluate!.grade.value;
-
-                            this.feedbackForm.controls['published'].setValue(this.evaluate!.published);
-                            this.feedbackForm.controls['grade'].setValue(this.evaluate!.grade.value);
-                            this.feedbackForm.controls['text'].setValue(this.evaluate!.text);
-                        }
-
-                        return;
-                    }));
-            } else if (this.workshop.phase == AddonModWorkshopPhase.PHASE_CLOSED && this.submission.gradeoverby &&
+                promises.push(this.fillEvaluationsGrades());
+            } else if (this.workshop.phase === AddonModWorkshopPhase.PHASE_CLOSED && this.submission.gradeoverby &&
                     this.evaluate && this.evaluate.text) {
                 promises.push(CoreUser.getProfile(this.submission.gradeoverby, this.courseId, true).then((profile) => {
                     this.evaluateByProfile = profile;
@@ -359,6 +322,49 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
             CoreDomUtils.showErrorModalDefault(error, 'core.course.errorgetmodule', true);
         } finally {
             this.loaded = true;
+        }
+    }
+
+    /**
+     * Fill evaluation grade info.
+     */
+    protected async fillEvaluationsGrades(): Promise<void> {
+        const defaultGrade = Translate.instant('addon.mod_workshop.notoverridden');
+
+        this.evaluationGrades = await CoreGradesHelper.makeGradesMenu(this.workshop.grade || 0, undefined, defaultGrade, -1);
+
+        if (!this.evaluate) {
+            // Should not happen.
+            return;
+        }
+
+        this.evaluate.grade = {
+            label: CoreGradesHelper.getGradeLabelFromValue(this.evaluationGrades, this.submissionInfo.gradeover) || defaultGrade,
+            value: this.submissionInfo.gradeover || -1,
+        };
+
+        try {
+            const offlineSubmission = await AddonModWorkshopOffline.getEvaluateSubmission(this.workshopId, this.submissionId);
+
+            this.hasOffline = true;
+            this.evaluate.published = offlineSubmission.published;
+            this.evaluate.text = offlineSubmission.feedbacktext;
+            this.evaluate.grade = {
+                label: CoreGradesHelper.getGradeLabelFromValue(this.evaluationGrades, parseInt(offlineSubmission.gradeover, 10)) ||
+                    defaultGrade,
+                value: offlineSubmission.gradeover || -1,
+            };
+        } catch {
+            // Ignore errors.
+            this.hasOffline = false;
+        } finally {
+            this.originalEvaluation.published = this.evaluate.published;
+            this.originalEvaluation.text = this.evaluate.text;
+            this.originalEvaluation.grade = this.evaluate.grade.value;
+
+            this.feedbackForm.controls['published'].setValue(this.evaluate.published);
+            this.feedbackForm.controls['grade'].setValue(this.evaluate.grade.value);
+            this.feedbackForm.controls['text'].setValue(this.evaluate.text);
         }
     }
 
@@ -597,19 +603,21 @@ export class AddonModWorkshopSubmissionPage implements OnInit, OnDestroy, CanLea
     /**
      * Log submission viewed.
      */
-    protected async logView(): Promise<void> {
-        if (this.fetchSuccess) {
-            return; // Already done.
-        }
-
-        this.fetchSuccess = true;
-
+    protected async performLogView(): Promise<void> {
         try {
-            await AddonModWorkshop.logViewSubmission(this.submissionId, this.workshopId, this.workshop.name);
+            await AddonModWorkshop.logViewSubmission(this.submissionId, this.workshopId);
             CoreCourse.checkModuleCompletion(this.courseId, this.module.completiondata);
         } catch {
             // Ignore errors.
         }
+
+        CoreAnalytics.logEvent({
+            type: CoreAnalyticsEventType.VIEW_ITEM,
+            ws: 'mod_workshop_view_submission',
+            name: this.workshop.name,
+            data: { id: this.workshop.id, submissionid: this.submissionId, category: 'workshop' },
+            url: `/mod/workshop/submission.php?cmid=${this.module.id}&id=${this.submissionId}`,
+        });
     }
 
     /**

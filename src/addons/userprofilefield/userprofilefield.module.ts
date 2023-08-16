@@ -17,6 +17,7 @@ import { NgModule } from '@angular/core';
 import { AddonUserProfileFieldCheckboxModule } from './checkbox/checkbox.module';
 import { AddonUserProfileFieldDatetimeModule } from './datetime/datetime.module';
 import { AddonUserProfileFieldMenuModule } from './menu/menu.module';
+import { AddonUserProfileFieldSocialModule } from './social/social.module';
 import { AddonUserProfileFieldTextareaModule } from './textarea/textarea.module';
 import { AddonUserProfileFieldTextModule } from './text/text.module';
 
@@ -25,8 +26,9 @@ import { AddonUserProfileFieldTextModule } from './text/text.module';
         AddonUserProfileFieldCheckboxModule,
         AddonUserProfileFieldDatetimeModule,
         AddonUserProfileFieldMenuModule,
+        AddonUserProfileFieldSocialModule,
         AddonUserProfileFieldTextareaModule,
         AddonUserProfileFieldTextModule,
     ],
 })
-export class AddonUserProfileFieldModule { }
+export class AddonUserProfileFieldModule {}

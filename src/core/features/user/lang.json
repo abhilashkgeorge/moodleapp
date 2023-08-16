@@ -1,6 +1,5 @@
 {
     "address": "Address",
-    "useraccount": "User account",
     "city": "City/town",
     "completeprofile": "Complete profile",
     "completeprofilehelp": "If you have problems completing your profile, try again later or contact your school or learning provider.",
@@ -10,6 +9,7 @@
     "completeyourprofile": "Complete your profile",
     "contact": "Contact",
     "country": "Country",
+    "department": "Department",
     "description": "Description",
     "details": "Details",
     "detailsnotavailable": "The details of this user are not available to you.",
@@ -18,9 +18,11 @@
     "emailagain": "Email (again)",
     "errorloaduser": "Error loading user.",
     "firstname": "First name",
+    "idnumber": "ID number",
+    "institution": "Institution",
     "interests": "Interests",
     "lastcourseaccess": "Last access to course",
-    "lastname": "Surname",
+    "lastname": "Last name",
     "manager": "Manager",
     "newpicture": "New picture",
     "noparticipants": "No participants found for this course",
@@ -35,6 +37,7 @@
     "supportmessagesent": "Your message has been sent.",
     "supportsubject": "[App] {{subject}}",
     "teacher": "Non-editing teacher",
+    "useraccount": "User account",
     "userwithid": "User with ID {{id}}",
     "webpage": "Web page"
 }

@@ -26,7 +26,8 @@ import { CoreEvents, CoreEventSiteData, CoreEventUserDeletedData, CoreEventUserS
 import { CoreStatusWithWarningsWSResponse, CoreWSExternalWarning } from '@services/ws';
 import { CoreError } from '@classes/errors/error';
 import { USERS_TABLE_NAME, CoreUserDBRecord } from './database/user';
-import { CorePushNotifications } from '@features/pushnotifications/services/pushnotifications';
+import { CoreUserHelper } from './user-helper';
+import { CoreUrl } from '@singletons/url';
 
 const ROOT_CACHE_KEY = 'mmUser:';
 
@@ -53,6 +54,16 @@ export const USER_PROFILE_REFRESHED = 'CoreUserProfileRefreshed';
  * Profile picture updated event.
  */
 export const USER_PROFILE_PICTURE_UPDATED = 'CoreUserProfilePictureUpdated';
+
+/**
+ * Value set in timezone when using the server's timezone.
+ */
+export const USER_PROFILE_SERVER_TIMEZONE = '99';
+
+/**
+ * Fake ID for a "no reply" user.
+ */
+export const USER_NOREPLY_USER = -10;
 
 /**
  * Service to provide user functionalities.
@@ -557,24 +568,20 @@ export class CoreUserProvider {
      *
      * @param userId User ID.
      * @param courseId Course ID.
-     * @param name Name of the user.
      * @returns Promise resolved when done.
      */
-    async logView(userId: number, courseId?: number, name?: string, siteId?: string): Promise<CoreStatusWithWarningsWSResponse> {
+    async logView(userId: number, courseId?: number, siteId?: string): Promise<CoreStatusWithWarningsWSResponse> {
         const site = await CoreSites.getSite(siteId);
 
         const params: CoreUserViewUserProfileWSParams = {
             userid: userId,
         };
-        const wsName = 'core_user_view_user_profile';
 
         if (courseId) {
             params.courseid = courseId;
         }
 
-        CorePushNotifications.logViewEvent(userId, name, 'user', wsName, { courseid: courseId });
-
-        return site.write(wsName, params);
+        return site.write('core_user_view_user_profile', params);
     }
 
     /**
@@ -589,8 +596,6 @@ export class CoreUserProvider {
         const params: CoreUserViewUserListWSParams = {
             courseid: courseId,
         };
-
-        CorePushNotifications.logViewListEvent('user', 'core_user_view_user_list', params);
 
         return site.write('core_user_view_user_list', params);
     }
@@ -661,6 +666,14 @@ export class CoreUserProvider {
             if (!imageUrl || treated[imageUrl] || !siteId) {
                 // It doesn't have an image or it has already been treated.
                 return;
+            }
+
+            // Do not prefetch when initials are set and image is default.
+            if ('firstname' in entry || 'lastname' in entry) {
+                const initials = CoreUserHelper.getUserInitials(entry);
+                if (initials && imageUrl && CoreUrl.parse(imageUrl)?.path === '/theme/image.php') {
+                    return;
+                }
             }
 
             treated[imageUrl] = true;
@@ -887,6 +900,7 @@ export type CoreUserPreference = {
 export type CoreUserProfileField = {
     type: string; // The type of the custom field - text field, checkbox...
     value: string; // The value of the custom field.
+    displayvalue?: string; // @since 4.2. Formatted value of the custom field.
     name: string; // The name of the custom field.
     shortname: string; // The shortname of the custom field - to be able to build the field class in the code.
 };

@@ -65,7 +65,7 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
         const currentSite = CoreSites.getRequiredCurrentSite();
         this.siteId = currentSite.getId();
         this.siteInfo = currentSite.getInfo();
-        this.siteName = currentSite.getSiteName();
+        this.siteName = await currentSite.getSiteName();
         this.siteUrl = currentSite.getURL();
         this.displaySwitchAccount = !currentSite.isFeatureDisabled('NoDelegate_SwitchAccount');
         this.displayContactSupport = new CoreUserAuthenticatedSupportConfig(currentSite).canContactSupport();
@@ -91,7 +91,8 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
                     }
 
                     const newHandlers = handlers
-                        .filter((handler) => handler.type === CoreUserDelegateService.TYPE_NEW_PAGE)
+                        .filter((handler) => handler.type === CoreUserDelegateService.TYPE_NEW_PAGE
+                        && handler.data.icon === 'fas-chart-bar')
                         .map((handler) => handler.data);
 
                     // Only update handlers if they have changed, to prevent a blink effect.

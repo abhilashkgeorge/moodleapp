@@ -47,6 +47,7 @@ import { CorePlatform } from '@services/platform';
 export class AddonModResourceIndexComponent extends CoreCourseModuleMainResourceComponent implements OnInit, OnDestroy {
 
     component = AddonModResourceProvider.COMPONENT;
+    pluginName = 'resource';
 
     mode = '';
     src = '';
@@ -143,7 +144,7 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
             this.displayDescription = false;
 
             this.warning = downloadResult.failed
-                ? this.getErrorDownloadingSomeFilesMessage(downloadResult.error!)
+                ? this.getErrorDownloadingSomeFilesMessage(downloadResult.error ?? '')
                 : '';
 
             return;
@@ -188,7 +189,9 @@ export class AddonModResourceIndexComponent extends CoreCourseModuleMainResource
      * @inheritdoc
      */
     protected async logActivity(): Promise<void> {
-        await AddonModResource.logView(this.module.instance, this.module.name);
+        await CoreUtils.ignoreErrors(AddonModResource.logView(this.module.instance));
+
+        this.analyticsLogEvent('mod_resource_view_resource');
     }
 
     /**

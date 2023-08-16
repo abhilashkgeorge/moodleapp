@@ -71,7 +71,7 @@ export class AddonModForumIndexComponent extends CoreCourseModuleMainActivityCom
     @ViewChild(CoreSplitViewComponent) splitView!: CoreSplitViewComponent;
 
     component = AddonModForumProvider.COMPONENT;
-    moduleName = 'forum';
+    pluginName = 'forum';
     descriptionNote?: string;
     promisedDiscussions: CorePromisedValue<AddonModForumDiscussionsManager>;
     discussionsItems: AddonModForumDiscussionItem[] = [];
@@ -500,22 +500,10 @@ export class AddonModForumIndexComponent extends CoreCourseModuleMainActivityCom
     }
 
     /**
-     * Performs the sync of the activity.
-     *
-     * @returns Promise resolved when done.
+     * @inheritdoc
      */
     protected sync(): Promise<AddonModForumSyncResult> {
         return AddonModForumPrefetchHandler.sync(this.module, this.courseId);
-    }
-
-    /**
-     * Checks if sync has succeed from result sync data.
-     *
-     * @param result Data returned on the sync function.
-     * @returns Whether it succeed or not.
-     */
-    protected hasSyncSucceed(result: AddonModForumSyncResult): boolean {
-        return result.updated;
     }
 
     /**
@@ -720,12 +708,14 @@ class AddonModForumDiscussionsManager extends CoreListItemsManager<AddonModForum
         }
 
         try {
-            await AddonModForum.logView(forum.id, forum.name);
+            await AddonModForum.logView(forum.id);
 
             CoreCourse.checkModuleCompletion(this.page.courseId, this.page.module.completiondata);
         } catch {
             // Ignore errors.
         }
+
+        this.page.analyticsLogEvent('mod_forum_view_forum');
     }
 
     /**

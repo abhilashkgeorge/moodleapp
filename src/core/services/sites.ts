@@ -51,7 +51,7 @@ import { CoreRedirectPayload } from './navigator';
 import { CoreSitesFactory } from './sites-factory';
 import { CoreText } from '@singletons/text';
 import { CoreLoginHelper } from '@features/login/services/login-helper';
-import { CoreErrorWithOptions } from '@classes/errors/errorwithtitle';
+import { CoreErrorWithOptions } from '@classes/errors/errorwithoptions';
 import { CoreAjaxError } from '@classes/errors/ajaxerror';
 import { CoreAjaxWSError } from '@classes/errors/ajaxwserror';
 import { CoreSitePlugins } from '@features/siteplugins/services/siteplugins';
@@ -62,6 +62,7 @@ import { asyncInstance, AsyncInstance } from '../utils/async-instance';
 import { CoreConfig } from './config';
 import { CoreNetwork } from '@services/network';
 import { CoreUserGuestSupportConfig } from '@features/user/classes/support/guest-support-config';
+import { CoreLang, CoreLangFormat } from '@services/lang';
 
 export const CORE_SITE_SCHEMAS = new InjectionToken<CoreSiteSchema[]>('CORE_SITE_SCHEMAS');
 export const CORE_SITE_CURRENT_SITE_ID_CONFIG = 'current_site_id';
@@ -418,7 +419,10 @@ export class CoreSitesProvider {
         siteUrl = CoreUrlUtils.removeUrlParams(siteUrl);
 
         try {
-            data = await Http.post(siteUrl + '/login/token.php', { appsitecheck: 1 }).pipe(timeout(CoreWS.getRequestTimeout()))
+            const lang = await CoreLang.getCurrentLanguage(CoreLangFormat.LMS);
+
+            data = await Http.post(`${siteUrl}/login/token.php?lang=${lang}`, { appsitecheck: 1 })
+                .pipe(timeout(CoreWS.getRequestTimeout()))
                 .toPromise();
         } catch (error) {
             throw this.createCannotConnectLoginError(null, {
@@ -480,12 +484,13 @@ export class CoreSitesProvider {
         }
 
         service = service || CoreConstants.CONFIG.wsservice;
+        const lang = await CoreLang.getCurrentLanguage(CoreLangFormat.LMS);
         const params = {
             username,
             password,
             service,
         };
-        const loginUrl = siteUrl + '/login/token.php';
+        const loginUrl = `${siteUrl}/login/token.php?lang=${lang}`;
         let data: CoreSitesLoginTokenResponse;
 
         try {
@@ -1260,9 +1265,11 @@ export class CoreSitesProvider {
                     id: site.id,
                     siteUrl: site.siteUrl,
                     siteUrlWithoutProtocol: site.siteUrl.replace(/^https?:\/\//, '').toLowerCase(),
-                    fullName: siteInfo?.fullname,
-                    siteName: CoreConstants.CONFIG.sitename == '' ? siteInfo?.sitename: CoreConstants.CONFIG.sitename,
-                    avatar: siteInfo?.userpictureurl,
+                    fullname: siteInfo?.fullname,
+                    firstname: siteInfo?.firstname,
+                    lastname: siteInfo?.lastname,
+                    siteName: siteInfo?.sitename,
+                    userpictureurl: siteInfo?.userpictureurl,
                     siteHomeId: siteInfo?.siteid || 1,
                     loggedOut: !!site.loggedOut,
                 };
@@ -1300,8 +1307,8 @@ export class CoreSitesProvider {
             }
 
             // Finally use fullname.
-            textA = a.fullName?.toLowerCase().trim() || '';
-            textB = b.fullName?.toLowerCase().trim() || '';
+            textA = a.fullname?.toLowerCase().trim() || '';
+            textB = b.fullname?.toLowerCase().trim() || '';
 
             return textA.localeCompare(textB);
         });
@@ -2016,9 +2023,11 @@ export type CoreSiteBasicInfo = {
     id: string; // Site ID.
     siteUrl: string; // Site URL.
     siteUrlWithoutProtocol: string; // Site URL without protocol.
-    fullName?: string; // User's full name.
+    fullname?: string; // User's full name.
+    firstname?: string; // User's first name.
+    lastname?: string; // User's last name.
+    userpictureurl?: string; // User avatar.
     siteName?: string; // Site's name.
-    avatar?: string; // User's avatar.
     badge?: number; // Badge to display in the site.
     siteHomeId?: number; // Site home ID.
     loggedOut: boolean; // If Site is logged out.
@@ -2105,6 +2114,16 @@ export type CoreLoginSiteInfo = {
      * Countrycode of the site.
      */
     countrycode?: string;
+
+    /**
+     * Is staging site.
+     */
+    staging?: boolean;
+
+    /**
+     * Class to apply to site item.
+     */
+    className?: string;
 };
 
 /**

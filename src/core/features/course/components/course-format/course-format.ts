@@ -50,6 +50,7 @@ import { CoreUserToursAlignment, CoreUserToursSide } from '@features/usertours/s
 import { CoreCourseCourseIndexTourComponent } from '../course-index-tour/course-index-tour';
 import { CoreDom } from '@singletons/dom';
 import { CoreUserTourDirectiveOptions } from '@directives/user-tour';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 
 /**
  * Component to display course contents using a certain format. If the format isn't found, use default one.
@@ -75,12 +76,13 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
     @Input() initialSectionId?: number; // The section to load first (by ID).
     @Input() initialSectionNumber?: number; // The section to load first (by number).
     @Input() moduleId?: number; // The module ID to scroll to. Must be inside the initial selected section.
+    @Input() isGuest?: boolean; // If user is accessing as a guest.
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     @ViewChildren(CoreDynamicComponent) dynamicComponents?: QueryList<CoreDynamicComponent<any>>;
 
     // All the possible component classes.
     courseFormatComponent?: Type<unknown>;
-    courseSummaryComponent?: Type<unknown>;
     singleSectionComponent?: Type<unknown>;
     allSectionsComponent?: Type<unknown>;
 
@@ -229,7 +231,6 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
 
         await Promise.all([
             this.loadCourseFormatComponent(),
-            this.loadCourseSummaryComponent(),
             this.loadSingleSectionComponent(),
             this.loadAllSectionsComponent(),
         ]);
@@ -243,15 +244,6 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
      */
     protected async loadCourseFormatComponent(): Promise<void> {
         this.courseFormatComponent = await CoreCourseFormatDelegate.getCourseFormatComponent(this.course);
-    }
-
-    /**
-     * Load course summary component.
-     *
-     * @returns Promise resolved when done.
-     */
-    protected async loadCourseSummaryComponent(): Promise<void> {
-        this.courseSummaryComponent = await CoreCourseFormatDelegate.getCourseSummaryComponent(this.course);
     }
 
     /**
@@ -451,8 +443,10 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
                             await CoreCourseModuleDelegate.getModuleDataFor(module.modname, module, this.course.id);
         }
 
-        if (CoreCourseHelper.canUserViewModule(module, section) && module.handlerData?.action) {
-            module.handlerData.action(data.event, module, module.course);
+        if (CoreCourseHelper.canUserViewModule(module, section)) {
+            this.scrollToModule(module.id);
+
+            module.handlerData?.action?.(data.event, module, module.course);
         }
 
         this.moduleId = data.moduleId;
@@ -470,6 +464,7 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
                 params: {
                     title: this.course.fullname,
                     sectionId: selectedId,
+                    isGuest: this.isGuest,
                 },
             },
         );
@@ -524,9 +519,7 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
                 this.content.scrollToTop(0);
             }
 
-            CoreUtils.ignoreErrors(
-                CoreCourse.logView(this.course.id, newSection.section, undefined, this.course.fullname),
-            );
+            this.logView(newSection.section, !previousValue);
         }
         this.changeDetectorRef.markForCheck();
     }
@@ -659,6 +652,37 @@ export class CoreCourseFormatComponent implements OnInit, OnChanges, OnDestroy {
      */
     canViewSection(section: CoreCourseSection): boolean {
         return CoreCourseHelper.canUserViewSection(section) && !CoreCourseHelper.isSectionStealth(section);
+    }
+
+    /**
+     * Log view.
+     *
+     * @param sectionNumber Section loaded (if any).
+     * @param firstLoad Whether it's the first load when opening the course.
+     */
+    async logView(sectionNumber?: number, firstLoad = false): Promise<void> {
+        await CoreUtils.ignoreErrors(
+            CoreCourse.logView(this.course.id, sectionNumber),
+        );
+
+        let extraParams = sectionNumber ? `&section=${sectionNumber}` : '';
+        if (firstLoad && sectionNumber) {
+            // If course is configured to show all sections in one page, don't include section in URL in first load.
+            const courseDisplay = 'courseformatoptions' in this.course &&
+                this.course.courseformatoptions?.find(option => option.name === 'coursedisplay');
+
+            if (!courseDisplay || Number(courseDisplay.value) !== 0) {
+                extraParams = '';
+            }
+        }
+
+        CoreAnalytics.logEvent({
+            type: CoreAnalyticsEventType.VIEW_ITEM,
+            ws: 'core_course_view_course',
+            name: this.course.fullname,
+            data: { id: this.course.id, sectionnumber: sectionNumber, category: 'course' },
+            url: `/course/view.php?id=${this.course.id}${extraParams}`,
+        });
     }
 
 }

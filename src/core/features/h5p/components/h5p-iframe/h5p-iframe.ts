@@ -29,6 +29,7 @@ import { CoreSite } from '@classes/site';
 import { CoreLogger } from '@singletons/logger';
 import { CoreH5PCore, CoreH5PDisplayOptions } from '../../classes/core';
 import { CoreH5PHelper } from '../../classes/helper';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 
 /**
  * Component to render an iframe with an H5P package.
@@ -45,6 +46,8 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     @Input() trackComponent?: string; // Component to send xAPI events to.
     @Input() contextId?: number; // Context ID. Required for tracking.
     @Input() enableInAppFullscreen?: boolean; // Whether to enable our custom in-app fullscreen feature.
+    @Input() saveFreq?: number; // Save frequency (in seconds) if enabled.
+    @Input() state?: string; // Initial content state.
     @Output() onIframeUrlSet = new EventEmitter<{src: string; online: boolean}>();
     @Output() onIframeLoaded = new EventEmitter<void>();
 
@@ -62,7 +65,6 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
         public elementRef: ElementRef,
         router: Router,
     ) {
-
         this.logger = CoreLogger.getInstance('CoreH5PIframeComponent');
         this.site = CoreSites.getRequiredCurrentSite();
         this.siteId = this.site.getId();
@@ -99,6 +101,12 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
     protected async play(): Promise<void> {
         let localUrl: string | undefined;
         let state: string;
+        this.onlinePlayerUrl = this.onlinePlayerUrl || CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
+            this.site.getURL(),
+            this.fileUrl || '',
+            this.displayOptions,
+            this.trackComponent,
+        );
 
         if (this.fileUrl) {
             state = await CoreFilepool.getFileStateByUrl(this.siteId, this.fileUrl);
@@ -115,25 +123,24 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
             if (localUrl) {
                 // Local package.
                 this.iframeSrc = localUrl;
-            } else {
-                this.onlinePlayerUrl = this.onlinePlayerUrl || CoreH5P.h5pPlayer.calculateOnlinePlayerUrl(
-                    this.site.getURL(),
-                    this.fileUrl || '',
-                    this.displayOptions,
-                    this.trackComponent,
-                );
 
+                // Only log analytics event when playing local package, online package already logs it.
+                CoreAnalytics.logEvent({
+                    type: CoreAnalyticsEventType.VIEW_ITEM,
+                    ws: 'core_h5p_get_trusted_h5p_file',
+                    name: 'H5P content',
+                    data: { category: 'h5p' },
+                    url: this.onlinePlayerUrl,
+                });
+            } else {
                 // Never allow downloading in the app. This will only work if the user is allowed to change the params.
                 const src = this.onlinePlayerUrl.replace(
                     CoreH5PCore.DISPLAY_OPTION_DOWNLOAD + '=1',
                     CoreH5PCore.DISPLAY_OPTION_DOWNLOAD + '=0',
                 );
 
-                // Get auto-login URL so the user is automatically authenticated if needed.
-                const url = await this.site.getAutoLoginUrl(src, false);
-
                 // Add the preventredirect param so the user can authenticate.
-                this.iframeSrc = CoreUrlUtils.addParamsToUrl(url, { preventredirect: false });
+                this.iframeSrc = CoreUrlUtils.addParamsToUrl(src, { preventredirect: false });
             }
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'Error loading H5P package.', true);
@@ -150,6 +157,11 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
      * @returns Promise resolved with the local URL.
      */
     protected async getLocalUrl(): Promise<string | undefined> {
+        const otherOptions = {
+            saveFreq: this.saveFreq,
+            state: this.state,
+        };
+
         try {
             const url = await CoreH5P.h5pPlayer.getContentIndexFileUrl(
                 this.fileUrl!,
@@ -157,6 +169,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                 this.trackComponent,
                 this.contextId,
                 this.siteId,
+                otherOptions,
             );
 
             return url;
@@ -176,6 +189,7 @@ export class CoreH5PIframeComponent implements OnChanges, OnDestroy {
                     this.trackComponent,
                     this.contextId,
                     this.siteId,
+                    otherOptions,
                 );
 
                 return url;

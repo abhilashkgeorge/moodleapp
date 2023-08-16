@@ -42,6 +42,7 @@ import { CorePlatform } from '@services/platform';
 import { CoreSiteError, CoreSiteErrorOptions } from '@classes/errors/siteerror';
 import { CoreUserGuestSupportConfig } from '@features/user/classes/support/guest-support-config';
 import { CoreSites } from '@services/sites';
+import { CoreLang, CoreLangFormat } from './lang';
 
 /**
  * This service allows performing WS calls and download/upload files.
@@ -419,7 +420,11 @@ export class CoreWSProvider {
      * @param preSets Extra settings and information. Only some
      * @returns Promise resolved with the response data in success and rejected with CoreAjaxError.
      */
-    protected performAjax<T = unknown>(method: string, data: Record<string, unknown>, preSets: CoreWSAjaxPreSets): Promise<T> {
+    protected async performAjax<T = unknown> (
+        method: string,
+        data: Record<string, unknown>,
+        preSets: CoreWSAjaxPreSets,
+    ): Promise<T> {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let promise: Promise<HttpResponse<any>>;
 
@@ -440,9 +445,11 @@ export class CoreWSProvider {
             args: this.convertValuesToString(data),
         }];
 
+        const lang = await CoreLang.getCurrentLanguage(CoreLangFormat.LMS);
+
         // The info= parameter has no function. It is just to help with debugging.
         // We call it info to match the parameter name use by Moodle's AMD ajax module.
-        let siteUrl = preSets.siteUrl + '/lib/ajax/' + script + '?info=' + method;
+        let siteUrl = preSets.siteUrl + '/lib/ajax/' + script + '?info=' + method + `&lang=${lang}`;
 
         if (preSets.noLogin && preSets.useGet) {
             // Send params using GET.
@@ -505,23 +512,60 @@ export class CoreWSProvider {
                 supportConfig: await CoreUserGuestSupportConfig.forSite(preSets.siteUrl),
             };
 
-            switch (data.status) {
-                case -2: // Certificate error.
-                    options.errorcode = 'invalidcertificate';
-                    options.errorDetails = Translate.instant('core.certificaterror', {
-                        details: CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Unknown error',
-                    });
-                    break;
-                case 404: // AJAX endpoint not found.
-                    options.errorcode = 'endpointnotfound';
-                    options.errorDetails = Translate.instant('core.ajaxendpointnotfound', { $a: CoreSite.MINIMUM_MOODLE_VERSION });
-                    break;
-                default:
-                    options.errorcode = 'serverconnectionajax';
-                    options.errorDetails = Translate.instant('core.serverconnection', {
-                        details: CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Unknown error',
-                    });
-                    break;
+            if (CorePlatform.isMobile()) {
+                switch (data.status) {
+                    case NativeHttp.ErrorCode.SSL_EXCEPTION:
+                        options.errorcode = 'invalidcertificate';
+                        options.errorDetails = Translate.instant('core.certificaterror', {
+                            details: CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Invalid certificate',
+                        });
+                        break;
+                    case NativeHttp.ErrorCode.SERVER_NOT_FOUND:
+                        options.errorcode = 'servernotfound';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Server could not be found';
+                        break;
+                    case NativeHttp.ErrorCode.TIMEOUT:
+                        options.errorcode = 'requesttimeout';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Request timed out';
+                        break;
+                    case NativeHttp.ErrorCode.UNSUPPORTED_URL:
+                        options.errorcode = 'unsupportedurl';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Url not supported';
+                        break;
+                    case NativeHttp.ErrorCode.NOT_CONNECTED:
+                        options.errorcode = 'connectionerror';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error)
+                            ?? 'Connection error, is network available?';
+                        break;
+                    case NativeHttp.ErrorCode.ABORTED:
+                        options.errorcode = 'requestaborted';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Request aborted';
+                        break;
+                    case NativeHttp.ErrorCode.POST_PROCESSING_FAILED:
+                        options.errorcode = 'requestprocessingfailed';
+                        options.errorDetails = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Request processing failed';
+                        break;
+                }
+            }
+
+            if (!options.errorcode) {
+                switch (data.status) {
+                    case 404:
+                        options.errorcode = 'endpointnotfound';
+                        options.errorDetails = Translate.instant('core.ajaxendpointnotfound', {
+                            $a: CoreSite.MINIMUM_MOODLE_VERSION,
+                        });
+                        break;
+                    default: {
+                        const details = CoreTextUtils.getErrorMessageFromError(data.error) ?? 'Unknown error';
+
+                        options.errorcode = 'serverconnectionajax';
+                        options.errorDetails = Translate.instant('core.serverconnection', {
+                            details: `[Response status code: ${data.status}] ${details}`,
+                        });
+                    }
+                        break;
+                }
             }
 
             throw new CoreAjaxError(options, 1, data.status);
@@ -647,11 +691,12 @@ export class CoreWSProvider {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         return promise.then(async (data: any) => {
-            // Some moodle web services return null.
-            // If the responseExpected value is set to false, we create a blank object if the response is null.
-            if (!data && !preSets.responseExpected) {
-                data = {};
+            // Some moodle web services always return null, and some others can return a primitive type or null.
+            if (data === null && (!preSets.responseExpected || preSets.typeExpected !== 'object')) {
+                return null;
             }
+
+            const typeExpected = preSets.typeExpected === 'jsonstring' ? 'string' : preSets.typeExpected;
 
             if (!data) {
                 throw await this.createCannotConnectSiteError(preSets.siteUrl, {
@@ -660,26 +705,26 @@ export class CoreWSProvider {
                         details: Translate.instant('core.errorinvalidresponse', { method }),
                     }),
                 });
-            } else if (typeof data != preSets.typeExpected) {
+            } else if (typeof data !== typeExpected) {
                 // If responseType is text an string will be returned, parse before returning.
                 if (typeof data == 'string') {
-                    if (preSets.typeExpected == 'number') {
+                    if (typeExpected === 'number') {
                         data = Number(data);
                         if (isNaN(data)) {
-                            this.logger.warn(`Response expected type "${preSets.typeExpected}" cannot be parsed to number`);
+                            this.logger.warn(`Response expected type "${typeExpected}" cannot be parsed to number`);
 
                             throw await this.createCannotConnectSiteError(preSets.siteUrl, {
                                 errorcode: 'invalidresponse',
                                 errorDetails: Translate.instant('core.errorinvalidresponse', { method }),
                             });
                         }
-                    } else if (preSets.typeExpected == 'boolean') {
+                    } else if (typeExpected === 'boolean') {
                         if (data === 'true') {
                             data = true;
                         } else if (data === 'false') {
                             data = false;
                         } else {
-                            this.logger.warn(`Response expected type "${preSets.typeExpected}" is not true or false`);
+                            this.logger.warn(`Response expected type "${typeExpected}" is not true or false`);
 
                             throw await this.createCannotConnectSiteError(preSets.siteUrl, {
                                 errorcode: 'invalidresponse',
@@ -687,7 +732,7 @@ export class CoreWSProvider {
                             });
                         }
                     } else {
-                        this.logger.warn('Response of type "' + typeof data + `" received, expecting "${preSets.typeExpected}"`);
+                        this.logger.warn('Response of type "' + typeof data + `" received, expecting "${typeExpected}"`);
 
                         throw await this.createCannotConnectSiteError(preSets.siteUrl, {
                             errorcode: 'invalidresponse',
@@ -695,7 +740,7 @@ export class CoreWSProvider {
                         });
                     }
                 } else {
-                    this.logger.warn('Response of type "' + typeof data + `" received, expecting "${preSets.typeExpected}"`);
+                    this.logger.warn('Response of type "' + typeof data + `" received, expecting "${typeExpected}"`);
 
                     throw await this.createCannotConnectSiteError(preSets.siteUrl, {
                         errorcode: 'invalidresponse',
@@ -751,7 +796,9 @@ export class CoreWSProvider {
                 throw this.createHttpError(error, error.status);
             }
 
-            throw new CoreError(Translate.instant('core.serverconnection'));
+            throw new CoreError(Translate.instant('core.serverconnection', {
+                details: CoreTextUtils.getErrorMessageFromError(error) ?? 'Unknown error',
+            }));
         });
     }
 
@@ -1296,7 +1343,7 @@ export type CoreWSPreSets = {
     /**
      * Defaults to 'object'. Use it when you expect a type that's not an object|array.
      */
-    typeExpected?: string;
+    typeExpected?: CoreWSTypeExpected;
 
     /**
      * Defaults to false. Clean multibyte Unicode chars from data.
@@ -1309,6 +1356,8 @@ export type CoreWSPreSets = {
      */
     splitRequest?: CoreWSPreSetsSplitRequest;
 };
+
+export type CoreWSTypeExpected = 'boolean'|'number'|'string'|'jsonstring'|'object';
 
 /**
  * Options to split a request.

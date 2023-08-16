@@ -610,13 +610,16 @@ export class AddonModWorkshopProvider {
         grades: AddonModWorkshopGradesData[],
         options: AddonModWorkshopGetGradesReportOptions = {},
     ): Promise<AddonModWorkshopGradesData[]> {
+        options.page = options.page ?? 0;
+        options.perPage = options.perPage ?? AddonModWorkshopProvider.PER_PAGE;
+
         const report = await this.getGradesReport(workshopId, options);
 
         Array.prototype.push.apply(grades, report.grades);
-        const canLoadMore = ((options.page! + 1) * options.perPage!) < report.totalcount;
+        const canLoadMore = ((options.page + 1) * options.perPage) < report.totalcount;
 
         if (canLoadMore) {
-            options.page!++;
+            options.page++;
 
             return this.fetchGradeReportsRecursive(workshopId, grades, options);
         }
@@ -778,7 +781,11 @@ export class AddonModWorkshopProvider {
         // Other errors ocurring.
         CoreWS.throwOnFailedStatus(response, 'Add submission failed');
 
-        return response.submissionid!;
+        if (!response.submissionid) {
+            throw new CoreError('Add submission failed, no submission id was returned');
+        }
+
+        return response.submissionid;
     }
 
     /**
@@ -1436,23 +1443,19 @@ export class AddonModWorkshopProvider {
      * Report the workshop as being viewed.
      *
      * @param id Workshop ID.
-     * @param name Name of the workshop.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    async logView(id: number, name?: string, siteId?: string): Promise<void> {
+    async logView(id: number, siteId?: string): Promise<void> {
         const params: AddonModWorkshopViewWorkshopWSParams = {
             workshopid: id,
         };
 
-        await CoreCourseLogHelper.logSingle(
+        await CoreCourseLogHelper.log(
             'mod_workshop_view_workshop',
             params,
             AddonModWorkshopProvider.COMPONENT,
             id,
-            name,
-            'workshop',
-            {},
             siteId,
         );
     }
@@ -1462,23 +1465,19 @@ export class AddonModWorkshopProvider {
      *
      * @param id Submission ID.
      * @param workshopId Workshop ID.
-     * @param name Name of the workshop.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    async logViewSubmission(id: number, workshopId: number, name?: string, siteId?: string): Promise<void> {
+    async logViewSubmission(id: number, workshopId: number, siteId?: string): Promise<void> {
         const params: AddonModWorkshopViewSubmissionWSParams = {
             submissionid: id,
         };
 
-        await CoreCourseLogHelper.logSingle(
+        await CoreCourseLogHelper.log(
             'mod_workshop_view_submission',
             params,
             AddonModWorkshopProvider.COMPONENT,
             workshopId,
-            name,
-            'workshop',
-            params,
             siteId,
         );
     }

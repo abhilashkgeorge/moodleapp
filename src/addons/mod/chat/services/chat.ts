@@ -87,24 +87,46 @@ export class AddonModChatProvider {
      * Report a chat as being viewed.
      *
      * @param id Chat instance ID.
-     * @param name Name of the chat.
      * @param siteId Site ID. If not defined, current site.
      * @returns Promise resolved when the WS call is successful.
      */
-    async logView(id: number, name?: string, siteId?: string): Promise<void> {
+    async logView(id: number, siteId?: string): Promise<void> {
         const params: AddonModChatViewChatWSParams = {
             chatid: id,
         };
 
-        await CoreCourseLogHelper.logSingle(
+        await CoreCourseLogHelper.log(
             'mod_chat_view_chat',
             params,
             AddonModChatProvider.COMPONENT,
             id,
-            name,
-            'chat',
-            {},
             siteId,
+        );
+    }
+
+    /**
+     * Report chat session views.
+     *
+     * @param id Chat instance ID.
+     * @param period Session period if viewing an individual session.
+     * @param period.start Period start.
+     * @param period.end Period end.
+     */
+    async logViewSessions(id: number, period?: { start: number; end: number }): Promise<void> {
+        const params: AddonModChatViewSessionsWSParams = {
+            cmid: id,
+        };
+
+        if (period) {
+            params.start = period.start;
+            params.end = period.end;
+        }
+
+        await CoreCourseLogHelper.log(
+            'mod_chat_view_sessions',
+            params,
+            AddonModChatProvider.COMPONENT,
+            id,
         );
     }
 
@@ -480,6 +502,15 @@ export type AddonModChatLoginUserWSResponse = {
  */
 export type AddonModChatViewChatWSParams = {
     chatid: number; // Chat instance id.
+};
+
+/**
+ * Params of mod_chat_view_sessions WS.
+ */
+export type AddonModChatViewSessionsWSParams = {
+    cmid: number; // Course module id.
+    start?: number; // Session start time.
+    end?: number; // Session end time.
 };
 
 /**

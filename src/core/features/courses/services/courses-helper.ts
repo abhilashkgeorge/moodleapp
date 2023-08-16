@@ -31,6 +31,9 @@ import { firstValueFrom, zipIncludingComplete } from '@/core/utils/rxjs';
 import { catchError, map } from 'rxjs/operators';
 import { chainRequests, WSObservable } from '@classes/site';
 
+// Id for a course item representing all courses (for example, for course filters).
+export const ALL_COURSES_ID = -1;
+
 /**
  * Helper to gather some common courses functions.
  */
@@ -45,14 +48,17 @@ export class CoreCoursesHelperProvider {
      * @param courseId Course ID to get the category.
      * @returns Promise resolved with the list of courses and the category.
      */
-    async getCoursesForPopover(courseId?: number): Promise<{courses: Partial<CoreEnrolledCourseData>[]; categoryId?: number}> {
-        const courses: Partial<CoreEnrolledCourseData>[] = await CoreCourses.getUserCourses(false);
+    async getCoursesForPopover(courseId?: number): Promise<{courses: CoreEnrolledCourseData[]; categoryId?: number}> {
+        const courses: CoreEnrolledCourseData[] = await CoreCourses.getUserCourses(false);
 
         // Add "All courses".
         courses.unshift({
-            id: -1,
+            id: ALL_COURSES_ID,
             fullname: Translate.instant('core.fulllistofcourses'),
+            shortname: Translate.instant('core.fulllistofcourses'),
             categoryid: -1,
+            summary: '',
+            summaryformat: 1,
         });
 
         let categoryId: number | undefined;
@@ -199,8 +205,20 @@ export class CoreCoursesHelperProvider {
      * @param course Course data.
      */
     async loadCourseColorAndImage(course: CoreCourseWithImageAndColor): Promise<void> {
+        // Moodle 4.1 downwards geopatterns are embedded in b64 in only some WS, remote them to keep it coherent.
+        if (course.courseimage?.startsWith('data')) {
+            course.courseimage = undefined;
+        }
+
+        if (course.courseimage !== undefined) {
+            course.courseImage = course.courseimage; // @deprecated sinde 4.3 use courseimage instead.
+
+            return;
+        }
+
         if (course.overviewfiles && course.overviewfiles[0]) {
-            course.courseImage = course.overviewfiles[0].fileurl;
+            course.courseimage = course.overviewfiles[0].fileurl;
+            course.courseImage = course.courseimage; // @deprecated sinde 4.3 use courseimage instead.
 
             return;
         }
@@ -415,7 +433,7 @@ export class CoreCoursesHelperProvider {
      * @returns My courses page module.
      */
     async getMyRouteModule(): Promise<unknown> {
-        return import('../pages/my/my.module').then(m => m.CoreCoursesMyCoursesPageModule);
+        return import('../courses-my-lazy.module').then(m => m.CoreCoursesMyLazyModule);
     }
 
 }
@@ -430,7 +448,8 @@ export type CoreCourseWithImageAndColor = {
     overviewfiles?: CoreWSExternalFile[];
     colorNumber?: number; // Color index number.
     color?: string; // Color RGB.
-    courseImage?: string; // Course thumbnail.
+    courseImage?: string; // Course thumbnail. @deprecated since 4.3, use courseimage instead.
+    courseimage?: string; // Course thumbnail.
 };
 
 /**

@@ -43,6 +43,8 @@ import { AddonModDataHelper } from '../../services/data-helper';
 import { CoreDom } from '@singletons/dom';
 import { AddonModDataEntryFieldInitialized } from '../../classes/base-field-plugin-component';
 import { CoreTextUtils } from '@services/utils/text';
+import { CoreTime } from '@singletons/time';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 
 /**
  * Page that displays the view edit page.
@@ -65,6 +67,7 @@ export class AddonModDataEditPage implements OnInit {
     protected initialSelectedGroup?: number;
     protected isEditing = false;
     protected originalData: AddonModDataEntryFields = {};
+    protected logView: () => void;
 
     entry?: AddonModDataEntry;
     fields: Record<number, AddonModDataField> = {};
@@ -94,6 +97,20 @@ export class AddonModDataEditPage implements OnInit {
     constructor() {
         this.siteId = CoreSites.getCurrentSiteId();
         this.editForm = new FormGroup({});
+
+        this.logView = CoreTime.once(() => {
+            if (!this.database) {
+                return;
+            }
+
+            CoreAnalytics.logEvent({
+                type: CoreAnalyticsEventType.VIEW_ITEM,
+                ws: this.isEditing ? 'mod_data_update_entry' : 'mod_data_add_entry',
+                name: this.title,
+                data: { databaseid: this.database.id, category: 'data' },
+                url: '/mod/data/edit.php?' + (this.isEditing ? `d=${this.database.id}&rid=${this.entryId}` : `id=${this.moduleId}`),
+            });
+        });
     }
 
     /**
@@ -230,6 +247,7 @@ export class AddonModDataEditPage implements OnInit {
             }
 
             this.editFormRender = this.displayEditFields();
+            this.logView();
         } catch (error) {
             CoreDomUtils.showErrorModalDefault(error, 'core.course.errorgetmodule', true);
         }
@@ -438,7 +456,33 @@ export class AddonModDataEditPage implements OnInit {
             replaceRegEx = new RegExp(replace, 'gi');
 
             template = template.replace(replaceRegEx, 'field_' + field.id);
+
+            // Replace the field name tag.
+            replace = '[[' + field.name + '#name]]';
+            replace = replace.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+            replaceRegEx = new RegExp(replace, 'gi');
+
+            template = template.replace(replaceRegEx, field.name);
+
+            // Replace the field description tag.
+            replace = '[[' + field.name + '#description]]';
+            replace = replace.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+            replaceRegEx = new RegExp(replace, 'gi');
+
+            template = template.replace(replaceRegEx, field.description);
         });
+
+        const regex = new RegExp('##otherfields##', 'gi');
+
+        if (template.match(regex)) {
+            const unusedFields = this.fieldsArray.filter(field => !template.includes(`[field]="fields[${field.id}]`)).map((field) =>
+                `<p><strong>${field.name}</strong></p>` +
+                '<p><addon-mod-data-field-plugin [class.has-errors]="!!errors[' + field.id + ']" mode="edit" \
+                [field]="fields[' + field.id + ']" [value]="contents[' + field.id + ']" [form]="form" [database]="database" \
+                [error]="errors[' + field.id + ']" (onFieldInit)="onFieldInit($event)"></addon-mod-data-field-plugin><p>');
+
+            template = template.replace(regex, unusedFields.join(''));
+        }
 
         // Editing tags is not supported.
         const replaceRegEx = new RegExp('##tags##', 'gi');

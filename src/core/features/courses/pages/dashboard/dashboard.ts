@@ -24,6 +24,10 @@ import { CoreCourseBlock } from '@features/course/services/course';
 import { CoreBlockComponent } from '@features/block/components/block/block';
 import { CoreNavigator } from '@services/navigator';
 import { CoreBlockDelegate } from '@features/block/services/block-delegate';
+import { CoreTime } from '@singletons/time';
+import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
+import { Translate } from '@singletons';
+import { CoreUtils } from '@services/utils/utils';
 
 /**
  * Page that displays the dashboard page.
@@ -46,6 +50,7 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
     loaded = false;
 
     protected updateSiteObserver: CoreEventObserver;
+    protected logView: () => void;
 
     constructor() {
         // Refresh the enabled flags if site is updated.
@@ -55,6 +60,18 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
             this.downloadCoursesEnabled = !CoreCourses.isDownloadCoursesDisabledInSite();
 
         }, CoreSites.getCurrentSiteId());
+
+        this.logView = CoreTime.once(async () => {
+            await CoreUtils.ignoreErrors(CoreCourses.logView('dashboard'));
+
+            CoreAnalytics.logEvent({
+                type: CoreAnalyticsEventType.VIEW_ITEM,
+                ws: 'core_my_view_page',
+                name: Translate.instant('core.courses.mymoodle'),
+                data: { category: 'course', page: 'dashboard' },
+                url: '/my/',
+            });
+        });
     }
 
     /**
@@ -102,6 +119,8 @@ export class CoreCoursesDashboardPage implements OnInit, OnDestroy {
         }
 
         this.loaded = true;
+
+        this.logView();
     }
 
     /**
