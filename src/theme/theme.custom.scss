@@ -23,6 +23,7 @@ html {
 
     /* Text and buttons */
     ion-header ion-toolbar {
+        --color : white;
         --core-header-toolbar-color: blue;
     }
 
@@ -35,9 +36,9 @@ html {
         background-color: #fd0100;
     }
 
-    h1 {
-        color: white;
-    }
+    // h1 {
+    //     color: white;
+    // }
 
     ion-tab-bar.mainmenu-tabs {
         /* Background */

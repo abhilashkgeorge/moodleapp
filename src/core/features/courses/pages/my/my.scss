@@ -14,3 +14,25 @@ core-block ::ng-deep ion-card.addon-block-myoverview {
     --background: transparent;
     margin: 0;
 }
+
+/* Add custom styles for the image */
+.custom-logo {
+    width: 60px; /* Adjust width as needed */
+    height: auto; /* Maintain aspect ratio */
+    margin-right: 10px; /* Adjust spacing between image and text */
+  }
+
+  /* Modify the existing logo styles */
+  .core-header-logo {
+    width: 40px; /* Adjust logo width if needed */
+    height: auto; /* Maintain aspect ratio */
+  }
+
+  /* Override existing title styles */
+  ion-title h1 {
+    display: flex; /* Align image and text in a row */
+    align-items: center; /* Vertically center items */
+  }
+  ion-title {
+    padding-left: 5px; /* Adjust this value to reduce or increase space */
+  }
