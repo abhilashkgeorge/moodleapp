@@ -81,11 +81,11 @@
 
     <div collapsible-footer appearOnBottom *ngIf="!showLoading" slot="fixed">
         <div class="list-item-limited-width" *ngIf="mode == 'external'">
-            <ion-button *ngIf="isIOS && (!shouldOpenInBrowser || !isOnline)" expand="block" fill="outline"
+            <!-- <ion-button *ngIf="isIOS && (!shouldOpenInBrowser || !isOnline)" expand="block" fill="outline"
                 (click)="open(openFileAction.OPEN_WITH)" class="ion-margin ion-text-wrap">
                 <ion-icon name="far-share-from-square" slot="start" aria-hidden="true"></ion-icon>
                 {{ 'core.openwith' | translate }}
-            </ion-button>
+            </ion-button> -->
 
             <ion-button expand="block" (click)="open(openFileAction.OPEN)" class="ion-margin ion-text-wrap">
                 <ng-container *ngIf="isStreamedFile">

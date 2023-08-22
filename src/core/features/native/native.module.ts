@@ -37,6 +37,7 @@ import { SQLite } from '@ionic-native/sqlite/ngx';
 import { StatusBar } from '@ionic-native/status-bar/ngx';
 import { WebIntent } from '@ionic-native/web-intent/ngx';
 import { Zip } from '@ionic-native/zip/ngx';
+import { DocumentViewer } from '@ionic-native/document-viewer/ngx';
 
 export const CORE_NATIVE_SERVICES = [
     Badge,
@@ -62,6 +63,7 @@ export const CORE_NATIVE_SERVICES = [
     WebIntent,
     WebView,
     Zip,
+    DocumentViewer,
 ];
 
 @NgModule({
@@ -89,6 +91,7 @@ export const CORE_NATIVE_SERVICES = [
         WebIntent,
         WebView,
         Zip,
+        DocumentViewer,
     ],
 })
 export class CoreNativeModule {}

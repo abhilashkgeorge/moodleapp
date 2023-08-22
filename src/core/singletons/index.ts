@@ -66,6 +66,7 @@ import { TranslateService } from '@ngx-translate/core';
 import { CoreApplicationInitStatus } from '@classes/application-init-status';
 import { asyncInstance } from '@/core/utils/async-instance';
 import { CorePromisedValue } from '@classes/promised-value';
+import { DocumentViewer as DocumentViewerService } from '@ionic-native/document-viewer/ngx';
 
 /**
  * Injector instance used to resolve singletons.
@@ -193,6 +194,7 @@ export const SQLite = makeSingleton(SQLiteService);
 export const WebIntent = makeSingleton(WebIntentService);
 export const WebView = makeSingleton(WebViewService);
 export const Zip = makeSingleton(ZipService);
+export const DocumentViewer = makeSingleton(DocumentViewerService);
 
 export const Camera = makeSingleton(CameraService);
 
