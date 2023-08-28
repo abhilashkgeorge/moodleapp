@@ -25,7 +25,8 @@ import { CoreDomUtils } from '@services/utils/dom';
 import { CoreMimetypeUtils } from '@services/utils/mimetype';
 import { CoreTextUtils } from '@services/utils/text';
 import { CoreWSError } from '@classes/errors/wserror';
-import { makeSingleton, Clipboard, InAppBrowser, FileOpener, WebIntent, QRScanner, Translate, NgZone } from '@singletons';
+import { makeSingleton, Clipboard, InAppBrowser, FileOpener, WebIntent,
+    QRScanner, Translate, NgZone, DocumentViewer } from '@singletons';
 import { CoreLogger } from '@singletons/logger';
 import { CoreViewerQRScannerComponent } from '@features/viewer/components/qr-scanner/qr-scanner';
 import { CoreCanceledError } from '@classes/errors/cancelederror';
@@ -41,6 +42,7 @@ import { CoreSites } from '@services/sites';
 import { CoreCancellablePromise } from '@classes/cancellable-promise';
 import { CoreAnalytics, CoreAnalyticsEventType } from '@services/analytics';
 import { CoreUrlUtils } from './url';
+import { DocumentViewerOptions } from '@ionic-native/document-viewer';
 
 export type TreeNode<T> = T & { children: TreeNode<T>[] };
 
@@ -996,7 +998,18 @@ export class CoreUtilsProvider {
         const extension = CoreMimetypeUtils.getFileExtension(path);
         const mimetype = extension && CoreMimetypeUtils.getMimeType(extension);
 
-        if (mimetype == 'text/html' && CorePlatform.isAndroid()) {
+        if (mimetype == 'application/pdf' && CorePlatform.isIOS()) {
+            // Open HTML local files in InAppBrowser, in system browser some embedded files aren't loaded.
+            // this.openInApp(path);
+            this.openPdfInIOS(path, 'application/pdf');
+
+            return;
+        }else if (mimetype == 'application/pdf' && CorePlatform.isAndroid()) {
+            // Open HTML local files in InAppBrowser, in system browser some embedded files aren't loaded.
+            this.openPdfInAppAndroid(path, 'application/pdf');
+
+            return;
+        }else if (mimetype == 'text/html' && CorePlatform.isAndroid()) {
             // Open HTML local files in InAppBrowser, in system browser some embedded files aren't loaded.
             this.openInApp(path);
 
@@ -1068,6 +1081,21 @@ export class CoreUtilsProvider {
 
             throw new Error(Translate.instant('core.erroropenfilenoapp'));
         }
+    }
+
+    /** Open PDF files in Android
+     * PDF is not supported in webview on Android
+     */
+
+    openPdfInAppAndroid(path: string, mimetype: string): void{
+        FileOpener.open(path, mimetype);
+    }
+
+    openPdfInIOS(path: string, mimetype: string): void{
+        const option: DocumentViewerOptions = {
+            title: 'My PDF',
+        };
+        DocumentViewer.viewDocument(path, mimetype, option);
     }
 
     /**

@@ -59,6 +59,7 @@
     "@ionic-native/core": "^5.36.0",
     "@ionic-native/device": "^5.36.0",
     "@ionic-native/diagnostic": "^5.36.0",
+    "@ionic-native/document-viewer": "^5.36.0",
     "@ionic-native/file": "^5.36.0",
     "@ionic-native/file-opener": "^5.36.0",
     "@ionic-native/file-transfer": "^5.36.0",

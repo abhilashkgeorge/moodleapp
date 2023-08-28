@@ -241,7 +241,7 @@
             <true />
         </edit-config>
         <edit-config file="*-Info.plist" mode="merge" target="CFBundleShortVersionString">
-            <string>4.3.0</string>
+            <string>1.0.0</string>
         </edit-config>
         <edit-config file="*-Info.plist" mode="overwrite" target="CFBundleLocalizations">
             <array>
