@@ -1,10 +1,10 @@
 {
-  "name": "moodlemobile",
-  "version": "4.3.0",
-  "description": "The official app for Moodle.",
+  "name": "haldiram",
+  "version": "1.0.0",
+  "description": "BIGGER BETTER BOLDER Driving forward, Growing together.",
   "author": {
-    "name": "Moodle Pty Ltd.",
-    "email": "mobile@moodle.com"
+    "name": "Abhilash Knox George",
+    "email": "user.abhilash@gmail.com"
   },
   "repository": {
     "type": "git",
