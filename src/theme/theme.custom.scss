@@ -21,11 +21,11 @@ ion-header ion-toolbar {
     --core-header-toolbar-border-color: green;
 }
 
-/* Text and buttons */
-ion-header ion-toolbar {
-    --color : white;
-    --core-header-toolbar-color: blue;
-}
+    /* Text and buttons */
+    ion-header ion-toolbar {
+        --color : white;
+        --core-header-toolbar-color: blue;
+    }
 
 // ion-header ion-toolbar.in-toolbar h1,
 // ion-header ion-toolbar.in-toolbar h2 {
@@ -36,9 +36,9 @@ collapsible-header-collapsed ion-toolbar {
     background-color: #fd0100;
 }
 
-// h1 {
-//     color: white;
-// }
+    // h1 {
+    //     color: white;
+    // }
 
 ion-tab-bar.mainmenu-tabs {
     /* Background */
