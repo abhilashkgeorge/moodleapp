@@ -19,6 +19,7 @@ import { CoreSites } from '@services/sites';
 import { CoreDomUtils } from '@services/utils/dom';
 import { CoreUtils } from '@services/utils/utils';
 import { CoreEventObserver, CoreEvents } from '@singletons/events';
+import { CoreLoginHelper } from '@features/login/services/login-helper';
 import {
     CoreUser,
     CoreUserProfile,
@@ -26,6 +27,8 @@ import {
     USER_PROFILE_REFRESHED,
     USER_PROFILE_SERVER_TIMEZONE,
 } from '@features/user/services/user';
+import { CoreSitePublicConfigResponse } from '@classes/site';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { CoreUserHelper } from '@features/user/services/user-helper';
 import { CoreNavigator } from '@services/navigator';
 import { CoreIonLoadingElement } from '@classes/ion-loading';
@@ -54,10 +57,15 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
     interests?: string[];
     displayTimezone = false;
     canShowDepartment = false;
+    siteUrl!: string;
+    siteName?: string;
+
 
     protected userId!: number;
     protected site!: CoreSite;
     protected obsProfileRefreshed?: CoreEventObserver;
+    protected siteConfig?: CoreSitePublicConfigResponse;
+    credForm!: FormGroup;
 
     constructor() {
         try {
@@ -82,10 +90,68 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
     /**
      * @inheritdoc
      */
+
+    /**async ngOnInit(): Promise<void> {
+        try {
+            this.siteUrl = CoreNavigator.getRequiredRouteParam<string>('siteUrl');
+            this.siteName = CoreNavigator.getRouteParam('siteName');
+            this.logoUrl = !CoreConstants.CONFIG.forceLoginLogo && CoreNavigator.getRouteParam('logoUrl') || undefined;
+            this.siteConfig = CoreNavigator.getRouteParam<CoreSitePublicConfigResponse>('siteConfig');
+            this.urlToOpen = CoreNavigator.getRouteParam('urlToOpen');
+            this.supportConfig = this.siteConfig && new CoreUserGuestSupportConfig(this.siteConfig);
+        } catch (error) {
+            CoreDomUtils.showErrorModal(error);
+
+            return CoreNavigator.back();
+        }
+
+        this.credForm = this.fb.group({
+            username: [CoreNavigator.getRouteParam<string>('username') || '', Validators.required],
+            password: ['', Validators.required],
+        });
+
+        if (this.siteConfig) {
+            this.treatSiteConfig();
+        }
+
+        const isSingleFixedSite = await CoreLoginHelper.isSingleFixedSite();
+
+        if (isSingleFixedSite || !this.siteConfig) {
+            // Fixed URL or not siteConfig retrieved from params, we need to check if it uses browser SSO login.
+            this.checkSite(this.siteUrl, true);
+        } else {
+            this.siteChecked = true;
+            this.pageLoaded = true;
+        }
+
+        if (CorePlatform.isIOS()) {
+            // Make iOS auto-fill work. The field that isn't focused doesn't get updated, do it manually.
+            // Debounce it to prevent triggering this function too often when the user is typing.
+            this.valueChangeSubscription = this.credForm.valueChanges.pipe(debounceTime(1000)).subscribe((changes) => {
+                if (!this.formElement || !this.formElement.nativeElement) {
+                    return;
+                }
+
+                const usernameInput = this.formElement.nativeElement.querySelector<HTMLInputElement>('input[name="username"]');
+                const passwordInput = this.formElement.nativeElement.querySelector<HTMLInputElement>('input[name="password"]');
+                const usernameValue = usernameInput?.value;
+                const passwordValue = passwordInput?.value;
+
+                if (usernameValue !== undefined && usernameValue !== changes.username) {
+                    this.credForm.get('username')?.setValue(usernameValue);
+                }
+                if (passwordValue !== undefined && passwordValue !== changes.password) {
+                    this.credForm.get('password')?.setValue(passwordValue);
+                }
+            });
+        }
+    } */
     async ngOnInit(): Promise<void> {
         this.userId = CoreNavigator.getRouteNumberParam('userId') || 0;
         this.courseId = CoreNavigator.getRouteNumberParam('courseId') || 0;
         this.canShowDepartment = this.userId != this.site.getUserId();
+        // this.siteUrl = CoreNavigator.getRequiredRouteParam<string>('siteUrl');
+        this.siteName = CoreNavigator.getRouteParam('siteName');
 
         // Allow to change the profile image only in the app profile page.
         this.canChangeProfilePicture =
@@ -131,6 +197,15 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
             CoreDomUtils.showErrorModalDefault(error, 'core.user.errorloaduser', true);
         }
     }
+
+
+    changePassword(): void {
+         CoreNavigator.navigate('/login/changeuserpassword', {
+            params: {
+            },
+        });
+    }
+
 
     /**
      * Check if current user image has changed.

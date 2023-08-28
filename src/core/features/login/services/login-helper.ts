@@ -41,6 +41,8 @@ import { CorePromisedValue } from '@classes/promised-value';
 import { SafeHtml } from '@angular/platform-browser';
 import { CoreLoginError } from '@classes/errors/loginerror';
 import { CoreSettingsHelper } from '@features/settings/services/settings-helper';
+import { HttpClient } from '@angular/common/http';
+import { CoreUserSupport } from '@features/user/services/support';
 
 const PASSWORD_RESETS_CONFIG_KEY = 'password-resets';
 
@@ -66,7 +68,7 @@ export class CoreLoginHelperProvider {
     protected isOpenEditAlertShown = false;
     protected waitingForBrowser?: CorePromisedValue<void>;
 
-    constructor() {
+    constructor(private http: HttpClient) {
         this.logger = CoreLogger.getInstance('CoreLoginHelper');
     }
 
@@ -208,6 +210,87 @@ export class CoreLoginHelperProvider {
             modal.dismiss();
         }
     }
+
+        /**
+     * Helper function to act when the forgotten password is clicked.
+     *
+     * @param siteUrl Site URL.
+     * @param username Username.
+     * @param siteConfig Site config.
+     */
+        async resetPasswordClicked(username: string, siteUrl: string, userId: number, password: string, newPassword: string): Promise<{ success: string, message: string }> {
+            try {
+                const data = await CoreSites.getUserToken(siteUrl, username, password);
+                const canReset = await this.canRequestPasswordReset(siteUrl);
+
+                const changePasswordUrl = `https://lms.haldiram.com/webservice/rest/server.php?moodlewsrestformat=json&wstoken=${data.token}&wsfunction=local_webservice_change_password&userid=${userId}&newpassword=${newPassword}&confirmpassword=${newPassword}`;
+
+                const modal = await CoreDomUtils.showModalLoading();
+
+                const response = await this.changePasswordDirectly(changePasswordUrl);
+
+                modal.dismiss();
+
+                return response; // Return the response from the API.
+            } catch (error) {
+                console.error('An error occurred:', error);
+
+                // Return an error response to indicate failure.
+                return { success: "false", message: error.message };
+            }
+        }
+
+        async changePasswordDirectly(url: string): Promise<{ success: string, message: string }> {
+
+            console.log("++++++++++++++++++++++++++=",url)
+            try {
+                const response = await fetch(url, {
+                    method: 'POST', // Or 'POST' depending on your API
+                    // You can add headers if needed, e.g., Authorization header
+                });
+
+                const data = await response.json();
+
+                // Assuming your API response contains a "success" property and a "message" property
+                const success = data.success;
+                const message = data.message;
+
+                return { success, message };
+            } catch (error) {
+                console.error('An error occurred while changing password:', error);
+                return { success: "false", message: 'An error occurred while changing password.' };
+            }
+        }
+
+
+
+        // async changePasswordDirectly(changePasswordUrl: string): Promise<boolean> {
+        //     const modal = await CoreDomUtils.showModalLoading();
+
+        //     try {
+        //         // Make an API request to change the password using POST method.
+        //         const response = await this.http.post(changePasswordUrl, {}).toPromise();
+
+        //         // Assuming that the response format has a 'status' property.
+        //         if (response && response['status'] === 'success') {
+        //             console.log("Response Status",response['status'])
+        //             return true
+        //             // Password changed successfully. Show a success message or take appropriate action.
+        //             // You can use Ionic's ToastController or AlertController to show messages.
+        //         } else {
+        //             return false
+        //             // Password change was not successful. Show an error message or take appropriate action.
+        //             // You can use Ionic's ToastController or AlertController to show messages.
+        //         }
+        //     } catch (error) {
+        //         return false
+        //         // An error occurred while changing the password. Show an error message or take appropriate action.
+        //         // You can use Ionic's ToastController or AlertController to show messages.
+        //     } finally {
+        //         modal.dismiss();
+        //     }
+        // }
+
 
     /**
      * Format profile fields, filtering the ones that shouldn't be shown on signup and classifying them in categories.
