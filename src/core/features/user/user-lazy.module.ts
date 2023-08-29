@@ -17,6 +17,7 @@ import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { CoreUserComponentsModule } from '@features/user/components/components.module';
 import { CoreUserAboutPage } from '@features/user/pages/about/about';
+import { ChangePasswordPage } from '@features/user/pages/change-password-main/change-password';
 
 const routes: Routes = [
     {
@@ -32,6 +33,10 @@ const routes: Routes = [
         path: 'about',
         component: CoreUserAboutPage,
     },
+    {
+        path: 'changeuserpassword',
+        component: ChangePasswordPage
+    }
 ];
 
 @NgModule({
@@ -42,6 +47,7 @@ const routes: Routes = [
     ],
     declarations: [
         CoreUserAboutPage,
+        ChangePasswordPage
     ],
 })
 export class CoreUserLazyModule {}

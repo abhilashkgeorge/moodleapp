@@ -200,10 +200,9 @@ export class CoreUserAboutPage implements OnInit, OnDestroy {
 
 
     changePassword(): void {
-         CoreNavigator.navigate('/login/changeuserpassword', {
-            params: {
-            },
-        });
+        CoreNavigator.navigateToSitePath(
+            'user/changeuserpassword'
+        )
     }
 
 
