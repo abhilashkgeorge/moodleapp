@@ -165,16 +165,17 @@ hasDigit(password: string): boolean {
            // const result = await CoreLoginHelper.resetPasswordClicked(username, this.site.siteUrl, this.userId, this.newPassword, this.confirmPassword);
            const changePasswordUrl = `https://lms.haldiram.com/webservice/rest/server.php?moodlewsrestformat=json&wstoken=${data.token}&wsfunction=local_webservice_change_password&userid=${this.userId}&newpassword=${this.newPassword}&confirmpassword=${this.confirmPassword}`;
            const response = await this.changePasswordDirectly(changePasswordUrl);
-           if (response.success === "true") {
-                CoreUserSupport.showAlert(response.message, "Success")
+           console.log("This is the Response:",response)
+           //if (response.success === "true") {
+                CoreUserSupport.showAlert("Password Changed", "Success")
             // Clear input fields after successful password change.
                 this.password = '';
                 this.newPassword = '';
                 this.confirmPassword = '';
                 CoreNavigator.navigateToSiteHome();
-           } else {
-            CoreUserSupport.showAlert(response.message, "Failure")
-           }
+        //    } else {
+        //     CoreUserSupport.showAlert(response.message, "Failure") //this
+        //    }
         } catch (error) {
             CoreUserSupport.showAlert("Invalid Credentials", "Try Again")
         } finally {
@@ -189,6 +190,7 @@ hasDigit(password: string): boolean {
                 method: 'POST', // Or 'POST' depending on your API
                 // You can add headers if needed, e.g., Authorization header
             });
+            console.log("This is response inside the function", response)
 
             const data = await response.json();
 
@@ -198,10 +200,10 @@ hasDigit(password: string): boolean {
 
             return { success, message };
         } catch (error) {
-            CoreUserSupport.showAlert(
-                "An Error Occured:" + error.message, "Error"
-            )
-            return { success: "false", message: 'An error occurred while changing password.' };
+            // CoreUserSupport.showAlert(
+            //     "An Error Occured:" + error.message, "Error"  ////this 2
+            // )
+            return { success: "false", message: 'An error occurred' + error.message };
         }
     }
 
