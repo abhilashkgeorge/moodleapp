@@ -9,9 +9,9 @@
         </ion-title>
 
         <ion-buttons slot="end">
-            <ion-button fill="clear" (click)="showHelp()" [attr.aria-label]="'core.help' | translate">
+            <!-- <ion-button fill="clear" (click)="showHelp()" [attr.aria-label]="'core.help' | translate">
                 <ion-icon slot="icon-only" name="far-circle-question" aria-hidden="true"></ion-icon>
-            </ion-button>
+            </ion-button> -->
         </ion-buttons>
     </ion-toolbar>
 </ion-header>
@@ -29,10 +29,10 @@
                     <img *ngIf="!logoUrl" src="assets/img/login_logo.png" role="presentation" alt="">
                 </div>
 
-                <p *ngIf="siteInfo?.siteName" class="ion-padding core-sitename">
+                <!-- <p *ngIf="siteInfo?.siteName" class="ion-padding core-sitename">
                     <core-format-text [text]="siteInfo?.siteName" [filter]="false"></core-format-text>
-                </p>
-                <p class="core-siteurl">{{siteUrl}}</p>
+                </p> -->
+                <!-- <p class="core-siteurl">{{siteUrl}}</p> -->
 
                 <ion-card *ngIf="!isLoggedOut" class="core-danger-card core-login-reconnect-warning">
                     <ion-item>
@@ -84,18 +84,18 @@
                     {{ 'core.login.forgotten' | translate }}
                 </ion-button>
 
-                <div class="ion-text-center ion-padding core-login-site-qrcode-separator">{{ 'core.login.or' | translate }}</div>
+                <!-- <div class="ion-text-center ion-padding core-login-site-qrcode-separator">{{ 'core.login.or' | translate }}</div> -->
 
                 <!-- Login methods -->
                 <core-login-methods></core-login-methods>
 
-                <ng-container *ngIf="showScanQR && !isBrowserSSO">
+                <!-- <ng-container *ngIf="showScanQR && !isBrowserSSO">
                     <ion-button expand="block" fill="outline" class="ion-margin core-login-site-qrcode"
                         (click)="showInstructionsAndScanQR()">
                         <ion-icon slot="start" name="fas-qrcode" aria-hidden="true"></ion-icon>
                         {{ 'core.scanqr' | translate }}
                     </ion-button>
-                </ng-container>
+                </ng-container> -->
             </form>
 
 

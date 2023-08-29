@@ -86,6 +86,39 @@ export class CoreUserSupportService {
         });
     }
 
+        /**
+     * Show a help modal that suggests contacting support if available.
+     *
+     * @param message Help message.
+     * @param supportSubject Support subject.
+     */
+        showAlert(message: string, status: string, supportConfig?: CoreUserSupportConfig): void {
+            const buttons: (AlertButton | string)[] = [];
+
+            if (!supportConfig) {
+                const site = CoreSites.getCurrentSite();
+
+                supportConfig = site ? new CoreUserAuthenticatedSupportConfig(site) : new CoreUserNullSupportConfig();
+            }
+
+            if (supportConfig.canContactSupport()) {
+                buttons.push({
+                    text: Translate.instant('core.contactsupport'),
+                    handler: () => CoreUserSupport.contact({
+                        supportConfig,
+                    }),
+                });
+            }
+
+            buttons.push(Translate.instant('Okay'));
+
+            CoreDomUtils.showAlertWithOptions({
+                header: Translate.instant(status),
+                message,
+                buttons,
+            });
+        }
+
     /**
      * Inject error details into contact support form.
      *

@@ -91,7 +91,8 @@ export class CoreMainMenuUserMenuComponent implements OnInit, OnDestroy {
                     }
 
                     const newHandlers = handlers
-                        .filter((handler) => handler.type === CoreUserDelegateService.TYPE_NEW_PAGE)
+                        .filter((handler) => handler.type === CoreUserDelegateService.TYPE_NEW_PAGE
+                        && handler.data.icon === 'fas-chart-bar')
                         .map((handler) => handler.data);
 
                     // Only update handlers if they have changed, to prevent a blink effect.
