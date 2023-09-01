@@ -123,12 +123,12 @@
                 <core-user-profile-field *ngFor="let field of user.customfields" [field]="field" contextLevel="course"
                     [contextInstanceId]="courseId" [courseId]="courseId">
                 </core-user-profile-field>
-                <div class="ion-text-center">
-                    <ion-button size="small" (click)="changePassword()">
-                        {{ 'Change Password' | translate }}
-                    </ion-button>
-                </div>
             </ion-item-group>
+            <div class="ion-text-center">
+                <ion-button size="small" (click)="changePassword()">
+                    {{ 'Change Password' | translate }}
+                </ion-button>
+            </div>
             <ion-item-group *ngIf="user.description">
                 <ion-item-divider>
                     <ion-label>

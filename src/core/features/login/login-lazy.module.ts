@@ -26,7 +26,6 @@ import { CoreLoginEmailSignupPage } from '@features/login/pages/email-signup/ema
 import { CoreLoginSitePage } from '@features/login/pages/site/site';
 import { CoreLoginSitesPage } from '@features/login/pages/sites/sites';
 import { CoreLoginChangePasswordPage } from '@features/login/pages/change-password/change-password';
-import { ChangePasswordPage } from '@features/user/pages/change-password-main/change-password';
 
 const routes: Routes = [
     {
@@ -68,10 +67,6 @@ const routes: Routes = [
         path: 'reconnect',
         loadChildren: () => CoreLoginHelper.getReconnectRouteModule(),
     },
-    {
-        path: 'changeuserpassword',
-        component:  ChangePasswordPage,
-    }
 ];
 
 @NgModule({
@@ -87,8 +82,7 @@ const routes: Routes = [
         CoreLoginSitePage,
         CoreLoginSitesPage,
         CoreLoginChangePasswordPage,
-        CoreLoginEmailSignupPage,
-        ChangePasswordPage,
+        CoreLoginEmailSignupPage
     ],
 })
 export class CoreLoginLazyModule {}

@@ -122,7 +122,7 @@ hasDigit(password: string): boolean {
     const hasNumber = numberPattern.test(password);
     const hasSpecialChar = specialCharPattern.test(password);
 
-    if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecialChar || password.length < 8) {
+    if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecialChar || password.length < 7) {
       CoreUserSupport.showAlert(
         Translate.instant('Password Requirements Not Satisified'), "Try Again"
       );
