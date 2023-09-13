@@ -1,5 +1,5 @@
 {
-    "app_id": "com.abhilashkgeorge.haldiram",
+    "app_id": "com.haldiram.lms",
     "appname": "haldiram",
     "versioncode": 1,
     "versionname": "1.0.0",
@@ -94,7 +94,7 @@
     "forceLoginLogo": false,
     "ioswebviewscheme": "moodleappfs",
     "appstores": {
-        "android": "com.abhilashkgeorge.haldiram",
+        "android": "com.haldiram.lms",
         "ios": "id633359593"
     },
     "wsrequestqueuelimit": 10,
