@@ -162,6 +162,7 @@
     "compare-versions": "^4.1.4",
     "concurrently": "^8.2.0",
     "cordova-android": "^10.1.2",
+    "cordova-plugin-document-viewer": "^1.0.0",
     "cordova-plugin-splashscreen": "^6.0.2",
     "cross-env": "^7.0.3",
     "eslint": "^7.25.0",
@@ -252,7 +253,8 @@
       "cordova-plugin-androidx-adapter": {},
       "cordova-plugin-screen-orientation": {},
       "cordova-plugin-moodleapp": {},
-      "cordova-plugin-splashscreen": {}
+      "cordova-plugin-splashscreen": {},
+      "cordova-plugin-document-viewer": {}
     }
   },
   "optionalDependencies": {
